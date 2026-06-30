@@ -10,10 +10,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"mcp-stowaway/pkg/controller"
-	"mcp-stowaway/pkg/protocol"
-	"mcp-stowaway/pkg/tasks"
-	"mcp-stowaway/pkg/topology"
+	"styx-mcp/pkg/controller"
+	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/tasks"
+	"styx-mcp/pkg/topology"
 )
 
 // Server wraps an MCP server around a controller.
@@ -26,7 +26,7 @@ type Server struct {
 func NewServer(ctrl *controller.Controller) *Server {
 	s := &Server{
 		controller: ctrl,
-		mcpserver:  server.NewMCPServer("mcp-stowaway", "0.1.0"),
+		mcpserver:  server.NewMCPServer("styx-mcp", "0.1.0"),
 	}
 	s.registerTools()
 	return s

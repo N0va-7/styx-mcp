@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"net"
 
-	"mcp-stowaway/pkg/protocol"
-	"mcp-stowaway/pkg/share/preauth"
-	"mcp-stowaway/pkg/transport"
+	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/share/preauth"
+	"styx-mcp/pkg/transport"
 )
 
 // handleConnect actively connects to a new child node.

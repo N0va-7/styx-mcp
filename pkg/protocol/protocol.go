@@ -3,7 +3,7 @@ package protocol
 import (
 	"net"
 
-	"mcp-stowaway/pkg/crypto"
+	"styx-mcp/pkg/crypto"
 )
 
 // Upstream and Downstream transport types.

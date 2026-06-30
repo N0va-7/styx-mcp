@@ -1,4 +1,4 @@
-module mcp-stowaway
+module styx-mcp
 
 go 1.25.6
 

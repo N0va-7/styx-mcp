@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"mcp-stowaway/internal/utils"
+	"styx-mcp/internal/utils"
 )
 
 var authToken string

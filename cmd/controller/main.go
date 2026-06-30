@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"mcp-stowaway/pkg/controller"
-	"mcp-stowaway/pkg/mcp"
+	"styx-mcp/pkg/controller"
+	"styx-mcp/pkg/mcp"
 )
 
 func main() {

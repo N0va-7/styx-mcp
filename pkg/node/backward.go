@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
 )
 
 // BackwardManager tracks active reverse-forward connections on a node.

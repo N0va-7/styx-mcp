@@ -1,4 +1,4 @@
-# mcp-stowaway
+# styx-mcp
 
 A Go-based MCP (Model Context Protocol) proxy network inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway). It exposes a network of agent nodes as MCP tools, allowing LLM clients to build topologies, run SOCKS5 proxies, and transfer files through controlled nodes.
 
@@ -23,7 +23,7 @@ Binaries are written to `release/`.
 ### 1. Start the controller
 
 ```bash
-./release/mcp-stowaway-controller -s mysecret -l 127.0.0.1:19137
+./release/styx-mcp-controller -s mysecret -l 127.0.0.1:19137
 ```
 
 The controller listens for node connections on `127.0.0.1:19137` and speaks MCP over stdio.
@@ -31,7 +31,7 @@ The controller listens for node connections on `127.0.0.1:19137` and speaks MCP 
 ### 2. Connect the first node
 
 ```bash
-./release/mcp-stowaway-node -s mysecret -c 127.0.0.1:19137
+./release/styx-mcp-node -s mysecret -c 127.0.0.1:19137
 ```
 
 ### 3. Use MCP tools
@@ -52,7 +52,7 @@ From an MCP client (e.g., Claude Desktop, or the Python test scripts under `/tmp
 Start a second node in passive mode:
 
 ```bash
-./release/mcp-stowaway-node -s mysecret -l 127.0.0.1:19138
+./release/styx-mcp-node -s mysecret -l 127.0.0.1:19138
 ```
 
 Then call MCP tools:

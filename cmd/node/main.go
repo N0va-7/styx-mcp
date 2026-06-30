@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"mcp-stowaway/pkg/node"
+	"styx-mcp/pkg/node"
 )
 
 func main() {

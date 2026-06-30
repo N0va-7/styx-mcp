@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
 )
 
 // handleSocks starts a SOCKS5 proxy listener on this node.

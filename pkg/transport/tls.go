@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 
-	"mcp-stowaway/pkg/crypto"
+	"styx-mcp/pkg/crypto"
 )
 
 // WrapTLSClientConn wraps a net.Conn with TLS client config.

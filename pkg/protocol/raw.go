@@ -9,7 +9,7 @@ import (
 	"net"
 	"reflect"
 
-	"mcp-stowaway/pkg/crypto"
+	"styx-mcp/pkg/crypto"
 )
 
 // RawProto is the plain TCP transport negotiator.

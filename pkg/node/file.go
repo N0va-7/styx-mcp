@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"mcp-stowaway/pkg/protocol"
+	"styx-mcp/pkg/protocol"
 )
 
 var pendingFile struct {

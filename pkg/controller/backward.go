@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
 )
 
 // BackwardListener tracks a reverse-forward listener on the controller.

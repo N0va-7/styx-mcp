@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
-	"mcp-stowaway/pkg/share/preauth"
-	"mcp-stowaway/pkg/transport"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/share/preauth"
+	"styx-mcp/pkg/transport"
 )
 
 // Node is the runtime state of an agent node.

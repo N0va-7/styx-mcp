@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
 )
 
 // Task modes for Topology.

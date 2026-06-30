@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
-	"mcp-stowaway/pkg/share/preauth"
-	"mcp-stowaway/pkg/tasks"
-	"mcp-stowaway/pkg/topology"
-	"mcp-stowaway/pkg/transport"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/share/preauth"
+	"styx-mcp/pkg/tasks"
+	"styx-mcp/pkg/topology"
+	"styx-mcp/pkg/transport"
 )
 
 // Controller is the MCP-facing control plane.

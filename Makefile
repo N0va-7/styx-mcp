@@ -1,8 +1,8 @@
 .PHONY: all build controller node test clean fmt vet
 
 BIN_DIR ?= release
-CONTROLLER_BIN = $(BIN_DIR)/mcp-stowaway-controller
-NODE_BIN = $(BIN_DIR)/mcp-stowaway-node
+CONTROLLER_BIN = $(BIN_DIR)/styx-mcp-controller
+NODE_BIN = $(BIN_DIR)/styx-mcp-node
 
 all: build
 

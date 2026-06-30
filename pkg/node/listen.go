@@ -4,10 +4,10 @@ import (
 	"log/slog"
 	"net"
 
-	"mcp-stowaway/internal/utils"
-	"mcp-stowaway/pkg/protocol"
-	"mcp-stowaway/pkg/share/preauth"
-	"mcp-stowaway/pkg/transport"
+	"styx-mcp/internal/utils"
+	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/share/preauth"
+	"styx-mcp/pkg/transport"
 )
 
 // handleListen starts a listener on this node for child connections.
