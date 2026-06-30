@@ -26,6 +26,8 @@ type Node struct {
 	children    map[string]*ChildConn
 	childrenMu  sync.RWMutex
 	childrenMsg chan *ChildrenMessage
+
+	BackwardManager *BackwardManager
 }
 
 // ChildConn holds a connection to a child node.
@@ -43,12 +45,14 @@ type ChildrenMessage struct {
 
 // NewNode creates a new node runtime.
 func NewNode(opt *Options) *Node {
-	return &Node{
+	n := &Node{
 		UUID:        protocol.TEMP_UUID,
 		Options:     opt,
 		children:    make(map[string]*ChildConn),
 		childrenMsg: make(chan *ChildrenMessage, 10),
 	}
+	n.BackwardManager = NewBackwardManager(n)
+	return n
 }
 
 // Run starts the node.
@@ -405,6 +409,18 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 	case protocol.SOCKSSTART:
 		req := message.(*protocol.SocksStart)
 		n.handleSocks(req)
+	case protocol.FORWARDSTART:
+		req := message.(*protocol.ForwardStart)
+		n.handleForward(req)
+	case protocol.BACKWARDSTART:
+		req := message.(*protocol.BackwardStart)
+		n.BackwardManager.handleBackwardStart(req)
+	case protocol.BACKWARDDATA:
+		req := message.(*protocol.BackwardData)
+		n.BackwardManager.handleBackwardData(req)
+	case protocol.BACKWARDFIN:
+		req := message.(*protocol.BackWardFin)
+		n.BackwardManager.handleBackwardFin(req)
 	case protocol.FILESTATREQ:
 		req := message.(*protocol.FileStatReq)
 		n.handleFileStat(req)

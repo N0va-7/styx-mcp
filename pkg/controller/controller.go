@@ -28,16 +28,20 @@ type Controller struct {
 
 	listeners   map[string]bool
 	listenersMu sync.RWMutex
+
+	backwardListeners   map[string]*BackwardListener
+	backwardListenersMu sync.RWMutex
 }
 
 // NewController creates a new controller.
 func NewController(opt *Options) *Controller {
 	return &Controller{
-		Options:     opt,
-		Topology:    topology.NewTopology(),
-		TaskManager: tasks.NewManager(),
-		conns:       make(map[string]net.Conn),
-		listeners:   make(map[string]bool),
+		Options:           opt,
+		Topology:          topology.NewTopology(),
+		TaskManager:       tasks.NewManager(),
+		conns:             make(map[string]net.Conn),
+		listeners:         make(map[string]bool),
+		backwardListeners: make(map[string]*BackwardListener),
 	}
 }
 
@@ -362,6 +366,21 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 	case protocol.SOCKSREADY:
 		slog.Info("socks ready", "uuid", uuid, "ok", message.(*protocol.SocksReady).OK)
 
+	case protocol.FORWARDREADY:
+		slog.Info("forward ready", "uuid", uuid, "ok", message.(*protocol.ForwardReady).OK)
+
+	case protocol.BACKWARDREADY:
+		res := message.(*protocol.BackwardReady)
+		c.handleBackwardReady(uuid, res)
+
+	case protocol.BACKWARDDATA:
+		data := message.(*protocol.BackwardData)
+		c.handleBackwardData(uuid, data)
+
+	case protocol.BACKWARDFIN:
+		fin := message.(*protocol.BackWardFin)
+		c.handleBackwardFin(uuid, fin)
+
 	case protocol.FILESTATRES:
 		// no-op; node confirms file transfer readiness.
 
@@ -480,6 +499,44 @@ func (c *Controller) GetNodeInfo(uuidNum int) (*topology.Node, bool) {
 	}
 
 	return nodeRes.Node, true
+}
+
+func (c *Controller) StartBackward(nodeUUID, localAddr, targetAddr string) error {
+	bl, err := NewBackwardListener(c, nodeUUID, localAddr, targetAddr)
+	if err != nil {
+		return err
+	}
+
+	c.backwardListenersMu.Lock()
+	c.backwardListeners[localAddr] = bl
+	c.backwardListenersMu.Unlock()
+
+	go bl.Run()
+	return nil
+}
+
+func (c *Controller) handleBackwardReady(uuid string, res *protocol.BackwardReady) {
+	c.backwardListenersMu.RLock()
+	defer c.backwardListenersMu.RUnlock()
+	for _, bl := range c.backwardListeners {
+		bl.handleReady(res.Seq, res.OK == 1)
+	}
+}
+
+func (c *Controller) handleBackwardData(uuid string, data *protocol.BackwardData) {
+	c.backwardListenersMu.RLock()
+	defer c.backwardListenersMu.RUnlock()
+	for _, bl := range c.backwardListeners {
+		bl.handleData(data.Seq, data.Data)
+	}
+}
+
+func (c *Controller) handleBackwardFin(uuid string, fin *protocol.BackWardFin) {
+	c.backwardListenersMu.RLock()
+	defer c.backwardListenersMu.RUnlock()
+	for _, bl := range c.backwardListeners {
+		bl.handleFin(fin.Seq)
+	}
 }
 
 // unused avoids unused import errors.

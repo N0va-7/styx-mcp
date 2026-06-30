@@ -71,6 +71,26 @@ Then call MCP tools:
 
 Then configure your application to use SOCKS5 proxy `127.0.0.1:19139` (traffic is forwarded through node 0).
 
+## Example: Port Forward
+
+Forward a port on a node to a target address accessible by that node:
+
+```json
+{"method": "tools/call", "params": {"name": "start_forward", "arguments": {"node_id": 0, "listen_address": "127.0.0.1:19141", "target_address": "127.0.0.1:19140"}}}
+```
+
+Traffic to `127.0.0.1:19141` on node 0 is forwarded to `127.0.0.1:19140`.
+
+## Example: Reverse Port Forward
+
+Listen on the controller machine and forward traffic through a node to a target:
+
+```json
+{"method": "tools/call", "params": {"name": "start_backward", "arguments": {"node_id": 0, "local_address": "127.0.0.1:19142", "target_address": "127.0.0.1:19140"}}}
+```
+
+Traffic to `127.0.0.1:19142` on the controller is forwarded through node 0 to `127.0.0.1:19140`.
+
 ## Example: File Upload
 
 ```json

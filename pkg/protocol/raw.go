@@ -281,16 +281,10 @@ func unmarshalPayload(msgType uint16, data []byte) (interface{}, error) {
 		mess = new(BackwardStart)
 	case BACKWARDREADY:
 		mess = new(BackwardReady)
-	case BACKWARDSEQ:
-		mess = new(BackwardSeq)
 	case BACKWARDDATA:
 		mess = new(BackwardData)
 	case BACKWARDFIN:
 		mess = new(BackWardFin)
-	case BACKWARDSTOP:
-		mess = new(BackwardStop)
-	case BACKWARDSTOPDONE:
-		mess = new(BackwardStopDone)
 	case FILESTATREQ:
 		mess = new(FileStatReq)
 	case FILESTATRES:

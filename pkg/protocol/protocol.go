@@ -219,9 +219,10 @@ type SocksTCPFin struct {
 
 // ForwardStart starts a port forward.
 type ForwardStart struct {
-	Seq     uint64
-	AddrLen uint16
-	Addr    string
+	ListenAddrLen uint16
+	ListenAddr    string
+	TargetAddrLen uint16
+	TargetAddr    string
 }
 
 // ForwardReady confirms a forward setup.
@@ -241,26 +242,17 @@ type ForwardFin struct {
 	Seq uint64
 }
 
-// BackwardStart starts a reverse port forward.
+// BackwardStart starts a reverse port forward connection.
 type BackwardStart struct {
-	UUIDLen  uint16
-	UUID     string
-	LPortLen uint16
-	LPort    string
-	RPortLen uint16
-	RPort    string
+	Seq           uint64
+	TargetAddrLen uint16
+	TargetAddr    string
 }
 
 // BackwardReady confirms reverse forward setup.
 type BackwardReady struct {
-	OK uint16
-}
-
-// BackwardSeq assigns a sequence number to a reverse forward connection.
-type BackwardSeq struct {
-	Seq      uint64
-	RPortLen uint16
-	RPort    string
+	Seq uint64
+	OK  uint16
 }
 
 // BackwardData carries reverse forwarded data.
@@ -273,20 +265,6 @@ type BackwardData struct {
 // BackWardFin signals the end of a reverse forward stream.
 type BackWardFin struct {
 	Seq uint64
-}
-
-// BackwardStop requests stopping a reverse forward.
-type BackwardStop struct {
-	All      uint16
-	RPortLen uint16
-	RPort    string
-}
-
-// BackwardStopDone confirms reverse forward stop.
-type BackwardStopDone struct {
-	All     uint16
-	UUIDLen uint16
-	UUID    string
 }
 
 // FileStatReq initiates a file transfer.

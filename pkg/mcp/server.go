@@ -68,6 +68,18 @@ func (s *Server) registerTools() {
 		mcp.WithString("address", mcp.Required(), mcp.Description("Listen address [ip]:<port>")),
 	), s.handleStartSocks)
 
+	s.mcpserver.AddTool(mcp.NewTool("start_forward",
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to forward on")),
+		mcp.WithString("listen_address", mcp.Required(), mcp.Description("Listen address [ip]:<port>")),
+		mcp.WithString("target_address", mcp.Required(), mcp.Description("Target address <ip>:<port>")),
+	), s.handleStartForward)
+
+	s.mcpserver.AddTool(mcp.NewTool("start_backward",
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to reverse forward through")),
+		mcp.WithString("local_address", mcp.Required(), mcp.Description("Local listen address [ip]:<port>")),
+		mcp.WithString("target_address", mcp.Required(), mcp.Description("Target address <ip>:<port>")),
+	), s.handleStartBackward)
+
 	s.mcpserver.AddTool(mcp.NewTool("upload_file",
 		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to upload to")),
 		mcp.WithString("local_path", mcp.Required(), mcp.Description("Local file path")),
@@ -394,6 +406,108 @@ func (s *Server) handleStartSocks(ctx context.Context, request mcp.CallToolReque
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
+		})
+	}()
+
+	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil
+}
+
+func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := getArgs(request)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	nodeID, err := getNodeID(args)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	listenAddress, ok := args["listen_address"].(string)
+	if !ok {
+		return s.failure("listen_address must be a string"), nil
+	}
+
+	targetAddress, ok := args["target_address"].(string)
+	if !ok {
+		return s.failure("target_address must be a string"), nil
+	}
+
+	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
+	res := <-s.controller.Topology.ResultChan
+	if res.UUID == "" {
+		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
+	}
+
+	task := s.controller.TaskManager.Create("start_forward")
+
+	go func() {
+		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		header := &protocol.Header{
+			Version:     1,
+			Sender:      protocol.ADMIN_UUID,
+			Accepter:    res.UUID,
+			MessageType: protocol.FORWARDSTART,
+		}
+		req := &protocol.ForwardStart{
+			ListenAddrLen: uint16(len(listenAddress)),
+			ListenAddr:    listenAddress,
+			TargetAddrLen: uint16(len(targetAddress)),
+			TargetAddr:    targetAddress,
+		}
+		if err := s.controller.SendToNode(res.UUID, header, req); err != nil {
+			s.controller.TaskManager.SetError(task.ID, err)
+			return
+		}
+		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
+			"node_id":        nodeID,
+			"listen_address": listenAddress,
+			"target_address": targetAddress,
+		})
+	}()
+
+	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil
+}
+
+func (s *Server) handleStartBackward(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := getArgs(request)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	nodeID, err := getNodeID(args)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	localAddress, ok := args["local_address"].(string)
+	if !ok {
+		return s.failure("local_address must be a string"), nil
+	}
+
+	targetAddress, ok := args["target_address"].(string)
+	if !ok {
+		return s.failure("target_address must be a string"), nil
+	}
+
+	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
+	res := <-s.controller.Topology.ResultChan
+	if res.UUID == "" {
+		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
+	}
+
+	task := s.controller.TaskManager.Create("start_backward")
+
+	go func() {
+		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		if err := s.controller.StartBackward(res.UUID, localAddress, targetAddress); err != nil {
+			s.controller.TaskManager.SetError(task.ID, err)
+			return
+		}
+		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
+			"node_id":        nodeID,
+			"local_address":  localAddress,
+			"target_address": targetAddress,
 		})
 	}()
 
