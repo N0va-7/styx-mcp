@@ -5,7 +5,7 @@ A Go-based MCP (Model Context Protocol) proxy network inspired by [Stowaway](htt
 ## Architecture
 
 - **controller**: MCP server + control plane. Accepts node connections and exposes MCP stdio tools.
-- **node**: Agent runtime. Connects to the controller or another node to form a tree topology.
+- **agent**: Agent runtime. Connects to the controller or another agent to form a tree topology.
 - **MCP tools**: JSON-RPC tools callable by any MCP client.
 
 ## Build
@@ -23,15 +23,15 @@ Binaries are written to `release/`.
 ### 1. Start the controller
 
 ```bash
-./release/styx-mcp-controller -s mysecret -l 127.0.0.1:19137
+./release/darwin-arm64/controller -s mysecret -l 127.0.0.1:19137
 ```
 
-The controller listens for node connections on `127.0.0.1:19137` and speaks MCP over stdio.
+The controller listens for agent connections on `127.0.0.1:19137` and speaks MCP over stdio.
 
-### 2. Connect the first node
+### 2. Connect the first agent
 
 ```bash
-./release/styx-mcp-node -s mysecret -c 127.0.0.1:19137
+./release/darwin-arm64/agent -s mysecret -c 127.0.0.1:19137
 ```
 
 ### 3. Use MCP tools
@@ -49,10 +49,10 @@ From an MCP client (e.g., Claude Desktop, or the Python test scripts under `/tmp
 
 ## Example: Two-Level Topology
 
-Start a second node in passive mode:
+Start a second agent in passive mode:
 
 ```bash
-./release/styx-mcp-node -s mysecret -l 127.0.0.1:19138
+./release/darwin-arm64/agent -s mysecret -l 127.0.0.1:19138
 ```
 
 Then call MCP tools:
@@ -69,7 +69,7 @@ Then call MCP tools:
 {"method": "tools/call", "params": {"name": "start_socks", "arguments": {"node_id": 0, "address": "127.0.0.1:19139"}}}
 ```
 
-Then configure your application to use SOCKS5 proxy `127.0.0.1:19139` (traffic is forwarded through node 0).
+Then configure your application to use SOCKS5 proxy `127.0.0.1:19139` (traffic is forwarded through agent 0).
 
 ## Example: Port Forward
 
@@ -79,7 +79,7 @@ Forward a port on a node to a target address accessible by that node:
 {"method": "tools/call", "params": {"name": "start_forward", "arguments": {"node_id": 0, "listen_address": "127.0.0.1:19141", "target_address": "127.0.0.1:19140"}}}
 ```
 
-Traffic to `127.0.0.1:19141` on node 0 is forwarded to `127.0.0.1:19140`.
+Traffic to `127.0.0.1:19141` on agent 0 is forwarded to `127.0.0.1:19140`.
 
 ## Example: Reverse Port Forward
 
@@ -89,7 +89,7 @@ Listen on the controller machine and forward traffic through a node to a target:
 {"method": "tools/call", "params": {"name": "start_backward", "arguments": {"node_id": 0, "local_address": "127.0.0.1:19142", "target_address": "127.0.0.1:19140"}}}
 ```
 
-Traffic to `127.0.0.1:19142` on the controller is forwarded through node 0 to `127.0.0.1:19140`.
+Traffic to `127.0.0.1:19142` on the controller is forwarded through agent 0 to `127.0.0.1:19140`.
 
 ## Example: File Upload
 
@@ -105,10 +105,10 @@ Traffic to `127.0.0.1:19142` on the controller is forwarded through node 0 to `1
 - `-l string`: listen address for nodes (`[ip]:<port>`)
 - `-tls-enable`: enable TLS for node communication
 
-### node
+### agent
 
 - `-s string`: shared secret
-- `-c string`: active mode target controller/node address (`<ip>:<port>`)
+- `-c string`: active mode target controller/agent address (`<ip>:<port>`)
 - `-l string`: passive mode listen address (`[ip]:<port>`)
 - `-tls-enable`: enable TLS
 
@@ -117,13 +117,13 @@ Traffic to `127.0.0.1:19142` on the controller is forwarded through node 0 to `1
 ```
 cmd/
   controller/    controller entrypoint
-  node/          node entrypoint
+  agent/         agent entrypoint
 internal/utils/  helpers
 pkg/
   controller/    control plane
   crypto/        AES + gzip
   mcp/           MCP server & tools
-  node/          agent runtime
+  node/          agent runtime protocol implementation
   protocol/      wire protocol
   share/preauth/ pre-authentication
   tasks/         async task manager
