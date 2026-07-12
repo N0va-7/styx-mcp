@@ -9,12 +9,13 @@ Non-interactive remote command execution and file download for MCP/LLM clients. 
 
 ## Tools
 
-### `exec`
+### `run_command` (formerly discussed as `exec`)
 
 - Args: `node_id`, `command`, optional `timeout_sec` (default 30, max 120), optional `workdir`
 - Returns: `{ task_id }`
 - Result: `exit_code`, `stdout`, `stderr`, `truncated`, `timed_out`, `duration_ms`
 - No PTY; `sh -c`; combined output cap 512KiB
+- Tool name is `run_command` (not `exec`) to avoid client-side filtering/caching confusion
 
 ### `download_file`
 

@@ -39,7 +39,7 @@ Inspired by Stowaway’s multi-hop model; re-oriented for **Model Context Protoc
 - **SOCKS5** on the controller — local tools exit via a chosen node
 - Per-stream **byte-window flow control** (no silent SOCKS drops; matching controller/agent required)
 - **Forward** (listen on agent) & **backward** (listen on controller)
-- **Async `exec`** (non-interactive `sh -c`, returns `task_id`)
+- **Async `run_command`** (non-interactive `sh -c`, returns `task_id`)
 - **Async `download_file`** / `upload_file` (task + local path; not interactive shell)
 - **Upload** files to nodes (path traversal sanitized)
 - Async tasks + `get_task_status`
@@ -141,7 +141,7 @@ Never commit real secrets into public configs.
 | `start_backward` | Reverse forward | **Controller** → via node → target |
 | `upload_file` | Upload | Controller → agent |
 | `download_file` | Download | Agent → controller path |
-| `exec` | Non-interactive command | Agent `sh -c` (async `task_id`) |
+| `run_command` | Non-interactive command | Agent `sh -c` (async `task_id`) |
 | `get_task_status` | Poll async work | — |
 | `shutdown_node` | Kill node | — |
 

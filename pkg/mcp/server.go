@@ -29,7 +29,7 @@ type Server struct {
 func NewServer(ctrl *controller.Controller) *Server {
 	s := &Server{
 		controller: ctrl,
-		mcpserver:  server.NewMCPServer("styx-mcp", "0.1.0"),
+		mcpserver:  server.NewMCPServer("styx-mcp", "0.2.0"),
 	}
 	s.registerTools()
 	return s
@@ -130,12 +130,14 @@ func (s *Server) registerTools() {
 	), s.handleUploadFile)
 
 	s.mcpserver.AddTool(mcp.NewTool("download_file",
+		mcp.WithDescription("Download a file from a node to the controller host (async task_id)"),
 		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to download from")),
 		mcp.WithString("remote_path", mcp.Required(), mcp.Description("Remote file path on the node")),
 		mcp.WithString("local_path", mcp.Required(), mcp.Description("Local destination path on controller")),
 	), s.handleDownloadFile)
 
-	s.mcpserver.AddTool(mcp.NewTool("exec",
+	s.mcpserver.AddTool(mcp.NewTool("run_command",
+		mcp.WithDescription("Run a non-interactive shell command on a node via sh -c (async task_id; not an interactive shell)"),
 		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID")),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Non-interactive shell command (sh -c)")),
 		mcp.WithNumber("timeout_sec", mcp.Description("Timeout in seconds (default 30, max 120)")),
@@ -717,7 +719,7 @@ func (s *Server) handleExec(ctx context.Context, request mcp.CallToolRequest) (*
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
 
-	task := s.controller.TaskManager.Create("exec")
+	task := s.controller.TaskManager.Create("run_command")
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		if err := s.controller.StartExec(res.UUID, task.ID, command, workdir, timeoutSec); err != nil {

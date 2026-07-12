@@ -39,7 +39,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 - **SOCKS5** 开在 controller，本机工具经指定节点出站
 - 每流 **字节窗口流控**（禁止静默丢 SOCKS 数据；controller/agent 需同版本）
 - **Forward**（agent 监听）与 **Backward**（controller 监听）
-- **异步 `exec`**（非交互 `sh -c`，返回 `task_id`）
+- **异步 `run_command`**（非交互 `sh -c`，返回 `task_id`）
 - **异步 `download_file`** / `upload_file`（任务 + 本地路径；非交互 shell）
 - 向节点 **上传** 文件（路径防穿越）
 - 异步任务 + `get_task_status`
@@ -141,7 +141,7 @@ make test
 | `start_backward` | 反向转发 | **Controller** → 经节点 → 目标 |
 | `upload_file` | 上传 | Controller → agent |
 | `download_file` | 下载 | Agent → controller 路径 |
-| `exec` | 非交互命令 | Agent `sh -c`（异步 `task_id`） |
+| `run_command` | 非交互命令 | Agent `sh -c`（异步 `task_id`） |
 | `get_task_status` | 查异步任务 | — |
 | `shutdown_node` | 关闭节点 | — |
 
