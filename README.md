@@ -1,5 +1,7 @@
 # styx-mcp
 
+**English** | [简体中文](README_ZH.md)
+
 MCP-facing multi-hop proxy inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway).
 
 It turns a tree of **agent** nodes into tools an LLM client (Cursor, Claude Desktop, etc.) can call: list topology, open SOCKS5, forward ports, and upload files — without a separate admin TUI.
