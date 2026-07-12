@@ -129,6 +129,19 @@ func (s *Server) registerTools() {
 		mcp.WithString("remote_path", mcp.Required(), mcp.Description("Remote destination path")),
 	), s.handleUploadFile)
 
+	s.mcpserver.AddTool(mcp.NewTool("download_file",
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to download from")),
+		mcp.WithString("remote_path", mcp.Required(), mcp.Description("Remote file path on the node")),
+		mcp.WithString("local_path", mcp.Required(), mcp.Description("Local destination path on controller")),
+	), s.handleDownloadFile)
+
+	s.mcpserver.AddTool(mcp.NewTool("exec",
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID")),
+		mcp.WithString("command", mcp.Required(), mcp.Description("Non-interactive shell command (sh -c)")),
+		mcp.WithNumber("timeout_sec", mcp.Description("Timeout in seconds (default 30, max 120)")),
+		mcp.WithString("workdir", mcp.Description("Optional working directory on the node")),
+	), s.handleExec)
+
 	s.mcpserver.AddTool(mcp.NewTool("get_task_status",
 		mcp.WithString("task_id", mcp.Required(), mcp.Description("Task ID")),
 	), s.handleGetTaskStatus)
@@ -625,6 +638,91 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 			"remote_path": remotePath,
 			"bytes":      len(data),
 		})
+	}()
+
+	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil
+}
+
+func (s *Server) handleDownloadFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := getArgs(request)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	nodeID, err := getNodeID(args)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	remotePath, ok := args["remote_path"].(string)
+	if !ok || remotePath == "" {
+		return s.failure("remote_path must be a non-empty string"), nil
+	}
+	localPath, ok := args["local_path"].(string)
+	if !ok || localPath == "" {
+		return s.failure("local_path must be a non-empty string"), nil
+	}
+
+	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
+	res := <-s.controller.Topology.ResultChan
+	if res.UUID == "" {
+		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
+	}
+
+	task := s.controller.TaskManager.Create("download_file")
+	go func() {
+		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		if err := s.controller.StartDownload(res.UUID, task.ID, remotePath, localPath); err != nil {
+			s.controller.TaskManager.SetError(task.ID, err)
+		}
+	}()
+
+	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil
+}
+
+func (s *Server) handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := getArgs(request)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	nodeID, err := getNodeID(args)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	command, ok := args["command"].(string)
+	if !ok || command == "" {
+		return s.failure("command must be a non-empty string"), nil
+	}
+
+	timeoutSec := uint32(30)
+	if v, ok := args["timeout_sec"].(float64); ok {
+		if v > 0 {
+			timeoutSec = uint32(v)
+		}
+		if timeoutSec > 120 {
+			timeoutSec = 120
+		}
+	}
+
+	workdir := ""
+	if v, ok := args["workdir"].(string); ok {
+		workdir = v
+	}
+
+	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
+	res := <-s.controller.Topology.ResultChan
+	if res.UUID == "" {
+		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
+	}
+
+	task := s.controller.TaskManager.Create("exec")
+	go func() {
+		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		if err := s.controller.StartExec(res.UUID, task.ID, command, workdir, timeoutSec); err != nil {
+			s.controller.TaskManager.SetError(task.ID, err)
+		}
 	}()
 
 	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil

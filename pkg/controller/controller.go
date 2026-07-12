@@ -34,6 +34,9 @@ type Controller struct {
 
 	socksServices   map[string]*SocksService
 	socksServicesMu sync.RWMutex
+
+	pendingDownloads map[string]*pendingDownload
+	downloadsMu      sync.Mutex
 }
 
 // NewController creates a new controller.
@@ -46,6 +49,7 @@ func NewController(opt *Options) *Controller {
 		listeners:         make(map[string]bool),
 		backwardListeners: make(map[string]*BackwardListener),
 		socksServices:     make(map[string]*SocksService),
+		pendingDownloads:  make(map[string]*pendingDownload),
 	}
 }
 
@@ -399,7 +403,24 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		c.handleBackwardFin(uuid, fin)
 
 	case protocol.FILESTATRES:
-		// no-op; node confirms file transfer readiness.
+		// upload ack from node (legacy no-op)
+
+	case protocol.FILESTATREQ:
+		// download metadata from node
+		req := message.(*protocol.FileStatReq)
+		c.handleDownloadFileStat(uuid, req)
+
+	case protocol.FILEDATA:
+		data := message.(*protocol.FileData)
+		c.handleDownloadFileData(uuid, data)
+
+	case protocol.FILEDOWNRES:
+		res := message.(*protocol.FileDownRes)
+		c.handleFileDownRes(uuid, res)
+
+	case protocol.EXECRES:
+		res := message.(*protocol.ExecRes)
+		c.handleExecRes(res)
 
 	case protocol.HEARTBEAT:
 		// no-op

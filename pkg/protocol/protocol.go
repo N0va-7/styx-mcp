@@ -53,8 +53,10 @@ const (
 	UPSTREAMREONLINE
 	SHUTDOWN
 	HEARTBEAT
-	// SOCKSTCPACK is appended at the end so existing wire IDs stay stable.
+	// Types below are appended so existing wire IDs stay stable.
 	SOCKSTCPACK
+	EXECREQ
+	EXECRES
 )
 
 const (
@@ -223,6 +225,31 @@ type SocksTCPFin struct {
 type SocksTCPAck struct {
 	Seq    uint64
 	Credit uint64
+}
+
+// ExecReq asks an agent to run a non-interactive command.
+type ExecReq struct {
+	TaskIDLen  uint16
+	TaskID     string
+	TimeoutSec uint32
+	WorkdirLen uint16
+	Workdir    string
+	CmdLen     uint32
+	Cmd        string
+}
+
+// ExecRes returns the result of an ExecReq.
+type ExecRes struct {
+	TaskIDLen  uint16
+	TaskID     string
+	ExitCode   uint32
+	TimedOut   uint16
+	Truncated  uint16
+	DurationMs uint32
+	StdoutLen  uint32
+	Stdout     []byte
+	StderrLen  uint32
+	Stderr     []byte
 }
 
 // ForwardStart starts a port forward.

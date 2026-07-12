@@ -446,6 +446,12 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 	case protocol.FILEDATA:
 		req := message.(*protocol.FileData)
 		n.handleFileData(req)
+	case protocol.FILEDOWNREQ:
+		req := message.(*protocol.FileDownReq)
+		n.handleFileDownReq(req)
+	case protocol.EXECREQ:
+		req := message.(*protocol.ExecReq)
+		n.handleExecReq(req)
 	case protocol.SHUTDOWN:
 		n.ParentConn.Close()
 		slog.Info("shutdown received")

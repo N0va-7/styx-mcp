@@ -271,6 +271,10 @@ func unmarshalPayload(msgType uint16, data []byte) (interface{}, error) {
 		mess = new(SocksTCPFin)
 	case SOCKSTCPACK:
 		mess = new(SocksTCPAck)
+	case EXECREQ:
+		mess = new(ExecReq)
+	case EXECRES:
+		mess = new(ExecRes)
 	case FORWARDSTART:
 		mess = new(ForwardStart)
 	case FORWARDREADY:
