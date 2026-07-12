@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -32,9 +35,49 @@ func NewServer(ctrl *controller.Controller) *Server {
 	return s
 }
 
+type mcpLogWriter struct {
+	mu     sync.Mutex
+	w      io.Writer
+	log    *os.File
+	prefix string
+}
+
+func (m *mcpLogWriter) Write(p []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.log != nil {
+		fmt.Fprintf(m.log, "[%s] %s\n", m.prefix, string(p))
+	}
+	return m.w.Write(p)
+}
+
+type mcpLogReader struct {
+	r      io.Reader
+	log    *os.File
+	prefix string
+}
+
+func (m *mcpLogReader) Read(p []byte) (int, error) {
+	n, err := m.r.Read(p)
+	if n > 0 && m.log != nil {
+		fmt.Fprintf(m.log, "[%s] %s\n", m.prefix, string(p[:n]))
+	}
+	return n, err
+}
+
 // Serve starts the MCP server on stdio.
 func (s *Server) Serve() error {
-	return server.ServeStdio(s.mcpserver)
+	logFile, err := os.OpenFile("/tmp/styx-mcp-mcp.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		slog.Warn("failed to open mcp log file", "error", err)
+		return server.ServeStdio(s.mcpserver)
+	}
+	defer logFile.Close()
+
+	stdioServer := server.NewStdioServer(s.mcpserver)
+	stdinLog := &mcpLogReader{r: os.Stdin, log: logFile, prefix: "IN"}
+	stdoutLog := &mcpLogWriter{w: os.Stdout, log: logFile, prefix: "OUT"}
+	return stdioServer.Listen(context.Background(), stdinLog, stdoutLog)
 }
 
 func (s *Server) registerTools() {
@@ -64,8 +107,8 @@ func (s *Server) registerTools() {
 	), s.handleConnectNode)
 
 	s.mcpserver.AddTool(mcp.NewTool("start_socks",
-		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to run SOCKS5 on")),
-		mcp.WithString("address", mcp.Required(), mcp.Description("Listen address [ip]:<port>")),
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to tunnel SOCKS through")),
+		mcp.WithString("address", mcp.Required(), mcp.Description("Local listen address on controller [ip]:<port>")),
 	), s.handleStartSocks)
 
 	s.mcpserver.AddTool(mcp.NewTool("start_forward",
@@ -389,23 +432,14 @@ func (s *Server) handleStartSocks(ctx context.Context, request mcp.CallToolReque
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
-		header := &protocol.Header{
-			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
-			Accepter:    res.UUID,
-			MessageType: protocol.SOCKSSTART,
-		}
-		req := &protocol.SocksStart{
-			AddrLen: uint16(len(address)),
-			Addr:    address,
-		}
-		if err := s.controller.SendToNode(res.UUID, header, req); err != nil {
+		if err := s.controller.StartSocks(res.UUID, address); err != nil {
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
+			"note":    "SOCKS5 listens on controller; traffic exits via the selected node",
 		})
 	}()
 

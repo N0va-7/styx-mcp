@@ -28,6 +28,16 @@ type Node struct {
 	childrenMsg chan *ChildrenMessage
 
 	BackwardManager *BackwardManager
+	SocksManager    *SocksManager
+
+	pendingFile *PendingFile
+}
+
+// PendingFile tracks an in-progress file upload for this node.
+type PendingFile struct {
+	filename string
+	fileSize uint64
+	sliceNum uint64
 }
 
 // ChildConn holds a connection to a child node.
@@ -50,8 +60,10 @@ func NewNode(opt *Options) *Node {
 		Options:     opt,
 		children:    make(map[string]*ChildConn),
 		childrenMsg: make(chan *ChildrenMessage, 10),
+		pendingFile: &PendingFile{},
 	}
 	n.BackwardManager = NewBackwardManager(n)
+	n.SocksManager = NewSocksManager(n)
 	return n
 }
 
@@ -125,7 +137,6 @@ func (n *Node) activeConnect() (net.Conn, error) {
 				return nil, err
 			}
 			conn = transport.WrapTLSClientConn(conn, config)
-			n.Options.Secret = ""
 		}
 
 		param := &protocol.NegParam{Conn: conn, Domain: n.Options.Domain}
@@ -135,7 +146,7 @@ func (n *Node) activeConnect() (net.Conn, error) {
 			return nil, err
 		}
 
-		if err := preauth.ActivePreAuth(conn); err != nil {
+		if err := preauth.ActivePreAuth(conn, n.Options.Secret); err != nil {
 			conn.Close()
 			return nil, err
 		}
@@ -224,7 +235,6 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 				continue
 			}
 			conn = transport.WrapTLSServerConn(conn, config)
-			n.Options.Secret = ""
 		}
 
 		param := &protocol.NegParam{Conn: conn}
@@ -235,7 +245,7 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 			continue
 		}
 
-		if err := preauth.PassivePreAuth(conn); err != nil {
+		if err := preauth.PassivePreAuth(conn, n.Options.Secret); err != nil {
 			slog.Error("preauth failed", "error", err)
 			conn.Close()
 			continue
@@ -408,7 +418,13 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 		n.handleConnect(req)
 	case protocol.SOCKSSTART:
 		req := message.(*protocol.SocksStart)
-		n.handleSocks(req)
+		n.SocksManager.handleSocksStart(req)
+	case protocol.SOCKSTCPDATA:
+		req := message.(*protocol.SocksTCPData)
+		n.SocksManager.handleSocksData(req)
+	case protocol.SOCKSTCPFIN:
+		req := message.(*protocol.SocksTCPFin)
+		n.SocksManager.handleSocksFin(req)
 	case protocol.FORWARDSTART:
 		req := message.(*protocol.ForwardStart)
 		n.handleForward(req)

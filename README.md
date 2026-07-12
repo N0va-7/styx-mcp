@@ -66,10 +66,12 @@ Then call MCP tools:
 ## Example: SOCKS5 Proxy
 
 ```json
-{"method": "tools/call", "params": {"name": "start_socks", "arguments": {"node_id": 0, "address": "127.0.0.1:19139"}}}
+{"method": "tools/call", "params": {"name": "start_socks", "arguments": {"node_id": 0, "address": "127.0.0.1:10801"}}}
 ```
 
-Then configure your application to use SOCKS5 proxy `127.0.0.1:19139` (traffic is forwarded through agent 0).
+SOCKS5 listens on the **controller** (`127.0.0.1:10801`). Traffic is tunneled through the selected agent node and exits from that node (Stowaway-style).
+
+Configure your tools to use SOCKS5 proxy `127.0.0.1:10801`.
 
 ## Example: Port Forward
 

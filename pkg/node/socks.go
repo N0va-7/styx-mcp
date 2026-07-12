@@ -3,170 +3,254 @@ package node
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
+	"sync"
 
-	"styx-mcp/internal/utils"
 	"styx-mcp/pkg/protocol"
 )
 
-// handleSocks starts a SOCKS5 proxy listener on this node.
-func (n *Node) handleSocks(req *protocol.SocksStart) {
-	addr, _, err := utils.CheckIPPort(req.Addr)
-	if err != nil {
-		slog.Error("invalid socks address", "error", err)
-		n.sendSocksReady(false)
-		return
-	}
+// SocksManager handles SOCKS5 streams tunneled from the controller.
+type SocksManager struct {
+	n        *Node
+	sessions map[uint64]*socksSession
+	mu       sync.RWMutex
+}
 
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		slog.Error("socks listen failed", "error", err)
-		n.sendSocksReady(false)
-		return
-	}
-	n.sendSocksReady(true)
+type socksSession struct {
+	dataChan chan []byte
+	once     sync.Once
+}
 
-	slog.Info("socks5 proxy listening", "addr", addr)
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			slog.Warn("socks accept failed", "error", err)
-			continue
-		}
-		go n.handleSocksConn(conn)
+// NewSocksManager creates a SOCKS stream manager for a node.
+func NewSocksManager(n *Node) *SocksManager {
+	return &SocksManager{
+		n:        n,
+		sessions: make(map[uint64]*socksSession),
 	}
 }
 
-func (n *Node) sendSocksReady(ok bool) {
-	res := &protocol.SocksReady{OK: 0}
-	if ok {
-		res.OK = 1
+// handleSocksStart prepares the agent to accept tunneled SOCKS streams.
+// Unlike the old behavior, it does NOT listen locally.
+func (sm *SocksManager) handleSocksStart(_ *protocol.SocksStart) {
+	sm.mu.Lock()
+	for _, sess := range sm.sessions {
+		sess.close()
 	}
+	sm.sessions = make(map[uint64]*socksSession)
+	sm.mu.Unlock()
 
-	header := &protocol.Header{
-		Version:     1,
-		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
-		MessageType: protocol.SOCKSREADY,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
-	}
-
-	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, header, res, false); err != nil {
-		slog.Error("send socks ready failed", "error", err)
-		return
-	}
-	if err := sMessage.SendMessage(); err != nil {
-		slog.Error("send socks ready failed", "error", err)
-	}
+	sm.sendSocksReady(true)
+	slog.Info("socks ready (controller-side listener)")
 }
 
-func (n *Node) handleSocksConn(client net.Conn) {
-	defer client.Close()
+func (sm *SocksManager) handleSocksData(req *protocol.SocksTCPData) {
+	sm.mu.Lock()
+	sess, ok := sm.sessions[req.Seq]
+	if !ok {
+		sess = &socksSession{dataChan: make(chan []byte, 32)}
+		sm.sessions[req.Seq] = sess
+		go sm.runSession(req.Seq, sess)
+	}
+	sm.mu.Unlock()
 
-	// Read greeting.
-	greeting := make([]byte, 2)
-	if _, err := io.ReadFull(client, greeting); err != nil {
-		return
-	}
-	if greeting[0] != 0x05 {
-		return
-	}
-
-	nmethods := int(greeting[1])
-	methods := make([]byte, nmethods)
-	if _, err := io.ReadFull(client, methods); err != nil {
-		return
-	}
-
-	// Accept no authentication.
-	if _, err := client.Write([]byte{0x05, 0x00}); err != nil {
-		return
-	}
-
-	// Read request.
-	reqHeader := make([]byte, 4)
-	if _, err := io.ReadFull(client, reqHeader); err != nil {
-		return
-	}
-	if reqHeader[0] != 0x05 || reqHeader[1] != 0x01 {
-		return
-	}
-
-	var targetAddr string
-	switch reqHeader[3] {
-	case 0x01: // IPv4
-		ip := make([]byte, 4)
-		if _, err := io.ReadFull(client, ip); err != nil {
-			return
-		}
-		portBytes := make([]byte, 2)
-		if _, err := io.ReadFull(client, portBytes); err != nil {
-			return
-		}
-		port := binary.BigEndian.Uint16(portBytes)
-		targetAddr = fmt.Sprintf("%s:%d", net.IP(ip).String(), port)
-	case 0x03: // Domain
-		lenByte := make([]byte, 1)
-		if _, err := io.ReadFull(client, lenByte); err != nil {
-			return
-		}
-		domain := make([]byte, lenByte[0])
-		if _, err := io.ReadFull(client, domain); err != nil {
-			return
-		}
-		portBytes := make([]byte, 2)
-		if _, err := io.ReadFull(client, portBytes); err != nil {
-			return
-		}
-		port := binary.BigEndian.Uint16(portBytes)
-		targetAddr = fmt.Sprintf("%s:%d", string(domain), port)
-	case 0x04: // IPv6
-		ip := make([]byte, 16)
-		if _, err := io.ReadFull(client, ip); err != nil {
-			return
-		}
-		portBytes := make([]byte, 2)
-		if _, err := io.ReadFull(client, portBytes); err != nil {
-			return
-		}
-		port := binary.BigEndian.Uint16(portBytes)
-		targetAddr = fmt.Sprintf("[%s]:%d", net.IP(ip).String(), port)
+	select {
+	case sess.dataChan <- append([]byte(nil), req.Data...):
 	default:
-		client.Write([]byte{0x05, 0x08, 0x00, reqHeader[3]})
+		slog.Warn("socks data chan full", "seq", req.Seq)
+	}
+}
+
+func (sm *SocksManager) handleSocksFin(req *protocol.SocksTCPFin) {
+	sm.mu.Lock()
+	sess, ok := sm.sessions[req.Seq]
+	if ok {
+		delete(sm.sessions, req.Seq)
+	}
+	sm.mu.Unlock()
+	if ok {
+		sess.close()
+	}
+}
+
+func (sm *SocksManager) removeSession(seq uint64) {
+	sm.mu.Lock()
+	sess, ok := sm.sessions[seq]
+	if ok {
+		delete(sm.sessions, seq)
+	}
+	sm.mu.Unlock()
+	if ok {
+		sess.close()
+	}
+}
+
+func (s *socksSession) close() {
+	s.once.Do(func() {
+		close(s.dataChan)
+	})
+}
+
+func (sm *SocksManager) runSession(seq uint64, sess *socksSession) {
+	defer func() {
+		sm.sendSocksFin(seq)
+		sm.removeSession(seq)
+	}()
+
+	// 1) SOCKS greeting
+	greeting, ok := <-sess.dataChan
+	if !ok || len(greeting) < 2 || greeting[0] != 0x05 {
+		return
+	}
+	sm.sendSocksData(seq, []byte{0x05, 0x00})
+
+	// 2) CONNECT request
+	req, ok := <-sess.dataChan
+	if !ok || len(req) < 4 || req[0] != 0x05 || req[1] != 0x01 {
+		return
+	}
+
+	targetAddr, err := parseSocksAddr(req)
+	if err != nil {
+		sm.sendSocksData(seq, []byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
 
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
-		client.Write([]byte{0x05, 0x05, 0x00, reqHeader[3]})
+		slog.Warn("socks dial failed", "seq", seq, "target", targetAddr, "error", err)
+		sm.sendSocksData(seq, []byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
 	defer target.Close()
 
-	// Send success response.
 	localAddr := target.LocalAddr().(*net.TCPAddr)
-	resp := append([]byte{0x05, 0x00, 0x00, 0x01}, localAddr.IP.To4()...)
+	ip4 := localAddr.IP.To4()
+	if ip4 == nil {
+		ip4 = net.IPv4zero
+	}
+	resp := append([]byte{0x05, 0x00, 0x00, 0x01}, ip4...)
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(localAddr.Port))
 	resp = append(resp, portBytes...)
-	if _, err := client.Write(resp); err != nil {
-		return
-	}
+	sm.sendSocksData(seq, resp)
 
-	// Relay traffic.
+	slog.Info("socks connected", "seq", seq, "target", targetAddr)
+
+	// 3) Relay: controller -> target
 	done := make(chan struct{}, 2)
 	go func() {
-		io.Copy(target, client)
-		done <- struct{}{}
+		defer func() { done <- struct{}{} }()
+		for data := range sess.dataChan {
+			if _, err := target.Write(data); err != nil {
+				return
+			}
+		}
 	}()
+
+	// 4) Relay: target -> controller
 	go func() {
-		io.Copy(client, target)
-		done <- struct{}{}
+		defer func() { done <- struct{}{} }()
+		buf := make([]byte, 32*1024)
+		for {
+			nr, err := target.Read(buf)
+			if nr > 0 {
+				sm.sendSocksData(seq, buf[:nr])
+			}
+			if err != nil {
+				return
+			}
+		}
 	}()
+
 	<-done
+}
+
+func parseSocksAddr(req []byte) (string, error) {
+	if len(req) < 4 {
+		return "", fmt.Errorf("short request")
+	}
+	off := 4
+	switch req[3] {
+	case 0x01: // IPv4
+		if len(req) < off+6 {
+			return "", fmt.Errorf("short ipv4")
+		}
+		ip := net.IP(req[off : off+4])
+		port := binary.BigEndian.Uint16(req[off+4 : off+6])
+		return fmt.Sprintf("%s:%d", ip.String(), port), nil
+	case 0x03: // Domain
+		if len(req) < off+1 {
+			return "", fmt.Errorf("short domain len")
+		}
+		dlen := int(req[off])
+		off++
+		if len(req) < off+dlen+2 {
+			return "", fmt.Errorf("short domain")
+		}
+		domain := string(req[off : off+dlen])
+		port := binary.BigEndian.Uint16(req[off+dlen : off+dlen+2])
+		return fmt.Sprintf("%s:%d", domain, port), nil
+	case 0x04: // IPv6
+		if len(req) < off+18 {
+			return "", fmt.Errorf("short ipv6")
+		}
+		ip := net.IP(req[off : off+16])
+		port := binary.BigEndian.Uint16(req[off+16 : off+18])
+		return fmt.Sprintf("[%s]:%d", ip.String(), port), nil
+	default:
+		return "", fmt.Errorf("unsupported atyp %d", req[3])
+	}
+}
+
+func (sm *SocksManager) sendSocksReady(ok bool) {
+	res := &protocol.SocksReady{OK: 0}
+	if ok {
+		res.OK = 1
+	}
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      sm.n.UUID,
+		Accepter:    protocol.ADMIN_UUID,
+		MessageType: protocol.SOCKSREADY,
+		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
+		Route:       protocol.TEMP_ROUTE,
+	}
+	sm.sendToUpstream(header, res)
+}
+
+func (sm *SocksManager) sendSocksData(seq uint64, data []byte) {
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      sm.n.UUID,
+		Accepter:    protocol.ADMIN_UUID,
+		MessageType: protocol.SOCKSTCPDATA,
+		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
+		Route:       protocol.TEMP_ROUTE,
+	}
+	msg := &protocol.SocksTCPData{Seq: seq, DataLen: uint64(len(data)), Data: data}
+	sm.sendToUpstream(header, msg)
+}
+
+func (sm *SocksManager) sendSocksFin(seq uint64) {
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      sm.n.UUID,
+		Accepter:    protocol.ADMIN_UUID,
+		MessageType: protocol.SOCKSTCPFIN,
+		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
+		Route:       protocol.TEMP_ROUTE,
+	}
+	sm.sendToUpstream(header, &protocol.SocksTCPFin{Seq: seq})
+}
+
+func (sm *SocksManager) sendToUpstream(header *protocol.Header, payload interface{}) {
+	sMessage := protocol.NewUpMsg(sm.n.ParentConn, sm.n.Options.Secret, sm.n.UUID)
+	if err := protocol.ConstructMessage(sMessage, header, payload, false); err != nil {
+		slog.Error("send socks message failed", "error", err)
+		return
+	}
+	if err := sMessage.SendMessage(); err != nil {
+		slog.Error("send socks message failed", "error", err)
+	}
 }

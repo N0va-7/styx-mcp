@@ -1,31 +1,34 @@
 package node
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"styx-mcp/pkg/protocol"
 )
 
-var pendingFile struct {
-	filename string
-	fileSize uint64
-	sliceNum uint64
-}
-
 // handleFileStat prepares for an incoming file upload.
 func (n *Node) handleFileStat(req *protocol.FileStatReq) {
-	pendingFile.filename = req.Filename
-	pendingFile.fileSize = req.FileSize
-	pendingFile.sliceNum = req.SliceNum
+	safeName, err := sanitizeUploadPath(req.Filename)
+	if err != nil {
+		slog.Error("invalid upload filename", "filename", req.Filename, "error", err)
+		n.pendingFile.filename = ""
+		return
+	}
 
-	slog.Info("file upload prepared", "filename", req.Filename, "size", req.FileSize, "slices", req.SliceNum)
+	n.pendingFile.filename = safeName
+	n.pendingFile.fileSize = req.FileSize
+	n.pendingFile.sliceNum = req.SliceNum
+
+	slog.Info("file upload prepared", "filename", safeName, "size", req.FileSize, "slices", req.SliceNum)
 }
 
 // handleFileData writes an incoming file slice to disk.
 func (n *Node) handleFileData(req *protocol.FileData) {
-	filename := pendingFile.filename
+	filename := n.pendingFile.filename
 	if filename == "" {
 		slog.Error("no pending file upload")
 		return
@@ -45,5 +48,30 @@ func (n *Node) handleFileData(req *protocol.FileData) {
 	}
 
 	slog.Info("file received", "filename", filename, "bytes", len(req.Data))
-	pendingFile.filename = ""
+	n.pendingFile.filename = ""
+}
+
+// sanitizeUploadPath rejects absolute paths and path traversal attempts.
+// It returns a cleaned relative path that is safe to write under the current
+// working directory (or a configured upload directory).
+func sanitizeUploadPath(filename string) (string, error) {
+	if filename == "" {
+		return "", fmt.Errorf("empty filename")
+	}
+
+	if filepath.IsAbs(filename) {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+
+	cleaned := filepath.Clean(filename)
+
+	// Reject any component that escapes the base directory.
+	parts := strings.Split(cleaned, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".." {
+			return "", fmt.Errorf("path traversal detected")
+		}
+	}
+
+	return cleaned, nil
 }

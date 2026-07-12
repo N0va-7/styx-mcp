@@ -89,7 +89,7 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 		return
 	}
 
-	if err := preauth.PassivePreAuth(conn); err != nil {
+	if err := preauth.PassivePreAuth(conn, n.Options.Secret); err != nil {
 		conn.Close()
 		return
 	}

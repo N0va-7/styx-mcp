@@ -31,6 +31,9 @@ type Controller struct {
 
 	backwardListeners   map[string]*BackwardListener
 	backwardListenersMu sync.RWMutex
+
+	socksServices   map[string]*SocksService
+	socksServicesMu sync.RWMutex
 }
 
 // NewController creates a new controller.
@@ -42,6 +45,7 @@ func NewController(opt *Options) *Controller {
 		conns:             make(map[string]net.Conn),
 		listeners:         make(map[string]bool),
 		backwardListeners: make(map[string]*BackwardListener),
+		socksServices:     make(map[string]*SocksService),
 	}
 }
 
@@ -109,7 +113,7 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
-	if err := preauth.PassivePreAuth(conn); err != nil {
+	if err := preauth.PassivePreAuth(conn, c.Options.Secret); err != nil {
 		conn.Close()
 		return
 	}
@@ -217,7 +221,6 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 				continue
 			}
 			conn = transport.WrapTLSClientConn(conn, config)
-			c.Options.Secret = ""
 		}
 
 		param := &protocol.NegParam{Conn: conn, Domain: c.Options.Domain}
@@ -227,7 +230,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 			continue
 		}
 
-		if err := preauth.ActivePreAuth(conn); err != nil {
+		if err := preauth.ActivePreAuth(conn, c.Options.Secret); err != nil {
 			conn.Close()
 			return nil, err
 		}
@@ -364,7 +367,17 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		slog.Info("connect done", "uuid", uuid, "ok", message.(*protocol.ConnectDone).OK)
 
 	case protocol.SOCKSREADY:
-		slog.Info("socks ready", "uuid", uuid, "ok", message.(*protocol.SocksReady).OK)
+		res := message.(*protocol.SocksReady)
+		slog.Info("socks ready", "uuid", uuid, "ok", res.OK)
+		c.handleSocksReady(uuid, res.OK == 1)
+
+	case protocol.SOCKSTCPDATA:
+		data := message.(*protocol.SocksTCPData)
+		c.handleSocksData(uuid, data)
+
+	case protocol.SOCKSTCPFIN:
+		fin := message.(*protocol.SocksTCPFin)
+		c.handleSocksFin(uuid, fin)
 
 	case protocol.FORWARDREADY:
 		slog.Info("forward ready", "uuid", uuid, "ok", message.(*protocol.ForwardReady).OK)
@@ -513,6 +526,38 @@ func (c *Controller) StartBackward(nodeUUID, localAddr, targetAddr string) error
 
 	go bl.Run()
 	return nil
+}
+
+func (c *Controller) handleSocksReady(uuid string, ok bool) {
+	c.socksServicesMu.RLock()
+	svc, found := c.socksServices[uuid]
+	c.socksServicesMu.RUnlock()
+	if !found {
+		slog.Warn("socks ready for unknown service", "uuid", uuid)
+		return
+	}
+	svc.handleReady(ok)
+}
+
+func (c *Controller) handleSocksData(uuid string, data *protocol.SocksTCPData) {
+	c.socksServicesMu.RLock()
+	svc, found := c.socksServices[uuid]
+	c.socksServicesMu.RUnlock()
+	if !found {
+		slog.Warn("socks data for unknown service", "uuid", uuid)
+		return
+	}
+	svc.handleData(data.Seq, data.Data)
+}
+
+func (c *Controller) handleSocksFin(uuid string, fin *protocol.SocksTCPFin) {
+	c.socksServicesMu.RLock()
+	svc, found := c.socksServices[uuid]
+	c.socksServicesMu.RUnlock()
+	if !found {
+		return
+	}
+	svc.handleFin(fin.Seq)
 }
 
 func (c *Controller) handleBackwardReady(uuid string, res *protocol.BackwardReady) {

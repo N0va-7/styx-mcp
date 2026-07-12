@@ -57,7 +57,7 @@ func (n *Node) handleConnect(req *protocol.ConnectStart) {
 		return
 	}
 
-	if err := preauth.ActivePreAuth(conn); err != nil {
+	if err := preauth.ActivePreAuth(conn, n.Options.Secret); err != nil {
 		conn.Close()
 		n.sendConnectDone(false)
 		return
