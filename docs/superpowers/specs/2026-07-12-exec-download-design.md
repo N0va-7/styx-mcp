@@ -1,4 +1,4 @@
-# Async exec + download_file
+# Async start_cmd + pull_file
 
 **Date:** 2026-07-12  
 **Status:** Approved
@@ -9,20 +9,21 @@ Non-interactive remote command execution and file download for MCP/LLM clients. 
 
 ## Tools
 
-### `run_command` (formerly discussed as `exec`)
+### `start_cmd` (formerly `run_command` / `exec`)
 
-- Args: `node_id`, `command`, optional `timeout_sec` (default 30, max 120), optional `workdir`
+- Args: `node_id`, `line`, optional `timeout_sec` (default 30, max 120), optional `workdir`
 - Returns: `{ task_id }`
 - Result: `exit_code`, `stdout`, `stderr`, `truncated`, `timed_out`, `duration_ms`
 - No PTY; `sh -c`; combined output cap 512KiB
-- Tool name is `run_command` (not `exec`) to avoid client-side filtering/caching confusion
+- Tool name avoids client-side filters that drop `exec` / `run_command`
 
-### `download_file`
+### `pull_file` (formerly `download_file`)
 
 - Args: `node_id`, `remote_path`, `local_path`
 - Returns: `{ task_id }`
 - Result: `local_path`, `bytes`, `sha256`
 - Single-slice transfer first (max 32MiB); path may be absolute on agent
+- Named to pair with `upload_file` and avoid client filters on `download_file`
 
 ## Protocol
 
