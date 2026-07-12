@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/socksflow"
 )
 
 // SocksManager handles SOCKS5 streams tunneled from the controller.
@@ -18,8 +19,16 @@ type SocksManager struct {
 }
 
 type socksSession struct {
-	dataChan chan []byte
-	once     sync.Once
+	inbox *socksflow.ByteQueue
+	send  *socksflow.Window
+	once  sync.Once
+}
+
+func (s *socksSession) close() {
+	s.once.Do(func() {
+		s.send.Close()
+		s.inbox.Close()
+	})
 }
 
 // NewSocksManager creates a SOCKS stream manager for a node.
@@ -31,7 +40,6 @@ func NewSocksManager(n *Node) *SocksManager {
 }
 
 // handleSocksStart prepares the agent to accept tunneled SOCKS streams.
-// Unlike the old behavior, it does NOT listen locally.
 func (sm *SocksManager) handleSocksStart(_ *protocol.SocksStart) {
 	sm.mu.Lock()
 	for _, sess := range sm.sessions {
@@ -44,33 +52,42 @@ func (sm *SocksManager) handleSocksStart(_ *protocol.SocksStart) {
 	slog.Info("socks ready (controller-side listener)")
 }
 
-func (sm *SocksManager) handleSocksData(req *protocol.SocksTCPData) {
+func (sm *SocksManager) getOrCreateSession(seq uint64) *socksSession {
 	sm.mu.Lock()
-	sess, ok := sm.sessions[req.Seq]
+	defer sm.mu.Unlock()
+	sess, ok := sm.sessions[seq]
 	if !ok {
-		sess = &socksSession{dataChan: make(chan []byte, 32)}
-		sm.sessions[req.Seq] = sess
-		go sm.runSession(req.Seq, sess)
+		sess = &socksSession{
+			inbox: socksflow.NewByteQueue(socksflow.InitialWindow),
+			send:  socksflow.NewWindow(socksflow.InitialWindow),
+		}
+		sm.sessions[seq] = sess
+		go sm.runSession(seq, sess)
 	}
-	sm.mu.Unlock()
+	return sess
+}
 
-	select {
-	case sess.dataChan <- append([]byte(nil), req.Data...):
-	default:
-		slog.Warn("socks data chan full", "seq", req.Seq)
+func (sm *SocksManager) handleSocksData(req *protocol.SocksTCPData) {
+	sess := sm.getOrCreateSession(req.Seq)
+	if err := sess.inbox.Push(req.Data); err != nil {
+		slog.Warn("socks inbox push failed", "seq", req.Seq, "error", err)
+		sm.sendSocksFin(req.Seq)
+		sm.removeSession(req.Seq)
 	}
 }
 
-func (sm *SocksManager) handleSocksFin(req *protocol.SocksTCPFin) {
-	sm.mu.Lock()
+func (sm *SocksManager) handleSocksAck(req *protocol.SocksTCPAck) {
+	sm.mu.RLock()
 	sess, ok := sm.sessions[req.Seq]
-	if ok {
-		delete(sm.sessions, req.Seq)
+	sm.mu.RUnlock()
+	if !ok {
+		return
 	}
-	sm.mu.Unlock()
-	if ok {
-		sess.close()
-	}
+	sess.send.Release(req.Credit)
+}
+
+func (sm *SocksManager) handleSocksFin(req *protocol.SocksTCPFin) {
+	sm.removeSession(req.Seq)
 }
 
 func (sm *SocksManager) removeSession(seq uint64) {
@@ -85,41 +102,42 @@ func (sm *SocksManager) removeSession(seq uint64) {
 	}
 }
 
-func (s *socksSession) close() {
-	s.once.Do(func() {
-		close(s.dataChan)
-	})
-}
-
 func (sm *SocksManager) runSession(seq uint64, sess *socksSession) {
 	defer func() {
 		sm.sendSocksFin(seq)
 		sm.removeSession(seq)
 	}()
 
-	// 1) SOCKS greeting
-	greeting, ok := <-sess.dataChan
-	if !ok || len(greeting) < 2 || greeting[0] != 0x05 {
+	greeting, err := sess.inbox.Pop()
+	if err != nil || len(greeting) < 2 || greeting[0] != 0x05 {
 		return
 	}
-	sm.sendSocksData(seq, []byte{0x05, 0x00})
+	sm.sendSocksAck(seq, uint64(len(greeting)))
+	if err := sess.send.Acquire(2); err != nil {
+		return
+	}
+	if err := sm.sendSocksData(seq, []byte{0x05, 0x00}); err != nil {
+		return
+	}
 
-	// 2) CONNECT request
-	req, ok := <-sess.dataChan
-	if !ok || len(req) < 4 || req[0] != 0x05 || req[1] != 0x01 {
+	req, err := sess.inbox.Pop()
+	if err != nil || len(req) < 4 || req[0] != 0x05 || req[1] != 0x01 {
 		return
 	}
+	sm.sendSocksAck(seq, uint64(len(req)))
 
 	targetAddr, err := parseSocksAddr(req)
 	if err != nil {
-		sm.sendSocksData(seq, []byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+		_ = sess.send.Acquire(10)
+		_ = sm.sendSocksData(seq, []byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
 
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		slog.Warn("socks dial failed", "seq", seq, "target", targetAddr, "error", err)
-		sm.sendSocksData(seq, []byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+		_ = sess.send.Acquire(10)
+		_ = sm.sendSocksData(seq, []byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}
 	defer target.Close()
@@ -133,29 +151,45 @@ func (sm *SocksManager) runSession(seq uint64, sess *socksSession) {
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(localAddr.Port))
 	resp = append(resp, portBytes...)
-	sm.sendSocksData(seq, resp)
+	if err := sess.send.Acquire(uint64(len(resp))); err != nil {
+		return
+	}
+	if err := sm.sendSocksData(seq, resp); err != nil {
+		return
+	}
 
 	slog.Info("socks connected", "seq", seq, "target", targetAddr)
 
-	// 3) Relay: controller -> target
 	done := make(chan struct{}, 2)
+
+	// controller -> target
 	go func() {
 		defer func() { done <- struct{}{} }()
-		for data := range sess.dataChan {
-			if _, err := target.Write(data); err != nil {
+		for {
+			chunk, err := sess.inbox.Pop()
+			if err != nil {
 				return
 			}
+			if _, err := target.Write(chunk); err != nil {
+				return
+			}
+			sm.sendSocksAck(seq, uint64(len(chunk)))
 		}
 	}()
 
-	// 4) Relay: target -> controller
+	// target -> controller
 	go func() {
 		defer func() { done <- struct{}{} }()
 		buf := make([]byte, 32*1024)
 		for {
 			nr, err := target.Read(buf)
 			if nr > 0 {
-				sm.sendSocksData(seq, buf[:nr])
+				if err := sess.send.Acquire(uint64(nr)); err != nil {
+					return
+				}
+				if err := sm.sendSocksData(seq, buf[:nr]); err != nil {
+					return
+				}
 			}
 			if err != nil {
 				return
@@ -219,7 +253,7 @@ func (sm *SocksManager) sendSocksReady(ok bool) {
 	sm.sendToUpstream(header, res)
 }
 
-func (sm *SocksManager) sendSocksData(seq uint64, data []byte) {
+func (sm *SocksManager) sendSocksData(seq uint64, data []byte) error {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      sm.n.UUID,
@@ -229,7 +263,19 @@ func (sm *SocksManager) sendSocksData(seq uint64, data []byte) {
 		Route:       protocol.TEMP_ROUTE,
 	}
 	msg := &protocol.SocksTCPData{Seq: seq, DataLen: uint64(len(data)), Data: data}
-	sm.sendToUpstream(header, msg)
+	return sm.sendToUpstreamErr(header, msg)
+}
+
+func (sm *SocksManager) sendSocksAck(seq uint64, credit uint64) {
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      sm.n.UUID,
+		Accepter:    protocol.ADMIN_UUID,
+		MessageType: protocol.SOCKSTCPACK,
+		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
+		Route:       protocol.TEMP_ROUTE,
+	}
+	sm.sendToUpstream(header, &protocol.SocksTCPAck{Seq: seq, Credit: credit})
 }
 
 func (sm *SocksManager) sendSocksFin(seq uint64) {
@@ -245,12 +291,18 @@ func (sm *SocksManager) sendSocksFin(seq uint64) {
 }
 
 func (sm *SocksManager) sendToUpstream(header *protocol.Header, payload interface{}) {
+	_ = sm.sendToUpstreamErr(header, payload)
+}
+
+func (sm *SocksManager) sendToUpstreamErr(header *protocol.Header, payload interface{}) error {
 	sMessage := protocol.NewUpMsg(sm.n.ParentConn, sm.n.Options.Secret, sm.n.UUID)
 	if err := protocol.ConstructMessage(sMessage, header, payload, false); err != nil {
 		slog.Error("send socks message failed", "error", err)
-		return
+		return err
 	}
 	if err := sMessage.SendMessage(); err != nil {
 		slog.Error("send socks message failed", "error", err)
+		return err
 	}
+	return nil
 }

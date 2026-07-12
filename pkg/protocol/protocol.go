@@ -53,6 +53,8 @@ const (
 	UPSTREAMREONLINE
 	SHUTDOWN
 	HEARTBEAT
+	// SOCKSTCPACK is appended at the end so existing wire IDs stay stable.
+	SOCKSTCPACK
 )
 
 const (
@@ -215,6 +217,12 @@ type SocksUDPData struct {
 // SocksTCPFin signals the end of a SOCKS TCP stream.
 type SocksTCPFin struct {
 	Seq uint64
+}
+
+// SocksTCPAck replenishes per-stream send credit (bytes the peer may send again).
+type SocksTCPAck struct {
+	Seq    uint64
+	Credit uint64
 }
 
 // ForwardStart starts a port forward.

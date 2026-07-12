@@ -10,6 +10,7 @@ import (
 
 	"styx-mcp/internal/utils"
 	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/socksflow"
 )
 
 // SocksService is a local SOCKS5 listener that tunnels through an agent node.
@@ -18,11 +19,26 @@ type SocksService struct {
 	nodeUUID string
 	address  string
 	listener net.Listener
-	seqConn  map[uint64]net.Conn
+	seqConn  map[uint64]*socksStream
 	mu       sync.RWMutex
 	seqGen   uint64
 	readyCh  chan bool
 	stopCh   chan struct{}
+}
+
+type socksStream struct {
+	conn  net.Conn
+	send  *socksflow.Window
+	inbox *socksflow.ByteQueue
+	once  sync.Once
+}
+
+func (ss *socksStream) close() {
+	ss.once.Do(func() {
+		ss.send.Close()
+		ss.inbox.Close()
+		ss.conn.Close()
+	})
 }
 
 // StartSocks listens on the controller and forwards SOCKS5 traffic via the node.
@@ -51,7 +67,7 @@ func (c *Controller) StartSocks(nodeUUID, localAddr string) error {
 		nodeUUID: nodeUUID,
 		address:  addr,
 		listener: listener,
-		seqConn:  make(map[uint64]net.Conn),
+		seqConn:  make(map[uint64]*socksStream),
 		readyCh:  make(chan bool, 1),
 		stopCh:   make(chan struct{}),
 	}
@@ -60,7 +76,6 @@ func (c *Controller) StartSocks(nodeUUID, localAddr string) error {
 	c.socksServices[nodeUUID] = svc
 	c.socksServicesMu.Unlock()
 
-	// Ask the agent to prepare for SOCKS streams (no listen on agent).
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      protocol.ADMIN_UUID,
@@ -144,18 +159,26 @@ func (s *SocksService) Stop() {
 	}
 	s.listener.Close()
 	s.mu.Lock()
-	for _, conn := range s.seqConn {
-		conn.Close()
+	for _, ss := range s.seqConn {
+		ss.close()
 	}
-	s.seqConn = make(map[uint64]net.Conn)
+	s.seqConn = make(map[uint64]*socksStream)
 	s.mu.Unlock()
 }
 
 func (s *SocksService) handleLocalConn(conn net.Conn) {
 	seq := atomic.AddUint64(&s.seqGen, 1)
+	ss := &socksStream{
+		conn:  conn,
+		send:  socksflow.NewWindow(socksflow.InitialWindow),
+		inbox: socksflow.NewByteQueue(socksflow.InitialWindow),
+	}
+
 	s.mu.Lock()
-	s.seqConn[seq] = conn
+	s.seqConn[seq] = ss
 	s.mu.Unlock()
+
+	go s.drainInbox(seq, ss)
 
 	defer func() {
 		s.sendSocksFin(seq)
@@ -172,7 +195,12 @@ func (s *SocksService) handleLocalConn(conn net.Conn) {
 
 		nr, err := conn.Read(buf)
 		if nr > 0 {
-			s.sendSocksData(seq, buf[:nr])
+			if err := ss.send.Acquire(uint64(nr)); err != nil {
+				return
+			}
+			if err := s.sendSocksData(seq, buf[:nr]); err != nil {
+				return
+			}
 		}
 		if err != nil {
 			if err != io.EOF {
@@ -180,6 +208,22 @@ func (s *SocksService) handleLocalConn(conn net.Conn) {
 			}
 			return
 		}
+	}
+}
+
+func (s *SocksService) drainInbox(seq uint64, ss *socksStream) {
+	for {
+		chunk, err := ss.inbox.Pop()
+		if err != nil {
+			return
+		}
+		if _, err := ss.conn.Write(chunk); err != nil {
+			slog.Warn("socks local write failed", "seq", seq, "error", err)
+			ss.close()
+			s.removeConn(seq)
+			return
+		}
+		s.sendSocksAck(seq, uint64(len(chunk)))
 	}
 }
 
@@ -192,17 +236,27 @@ func (s *SocksService) handleReady(ok bool) {
 
 func (s *SocksService) handleData(seq uint64, data []byte) {
 	s.mu.RLock()
-	conn, ok := s.seqConn[seq]
+	ss, ok := s.seqConn[seq]
 	s.mu.RUnlock()
 	if !ok {
 		slog.Warn("socks data for unknown seq", "seq", seq)
 		return
 	}
-	if _, err := conn.Write(data); err != nil {
-		slog.Warn("socks local write failed", "seq", seq, "error", err)
-		conn.Close()
+	if err := ss.inbox.Push(data); err != nil {
+		slog.Warn("socks inbox push failed", "seq", seq, "error", err)
+		s.sendSocksFin(seq)
 		s.removeConn(seq)
 	}
+}
+
+func (s *SocksService) handleAck(seq uint64, credit uint64) {
+	s.mu.RLock()
+	ss, ok := s.seqConn[seq]
+	s.mu.RUnlock()
+	if !ok {
+		return
+	}
+	ss.send.Release(credit)
 }
 
 func (s *SocksService) handleFin(seq uint64) {
@@ -211,14 +265,17 @@ func (s *SocksService) handleFin(seq uint64) {
 
 func (s *SocksService) removeConn(seq uint64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if conn, ok := s.seqConn[seq]; ok {
-		conn.Close()
+	ss, ok := s.seqConn[seq]
+	if ok {
 		delete(s.seqConn, seq)
+	}
+	s.mu.Unlock()
+	if ok {
+		ss.close()
 	}
 }
 
-func (s *SocksService) sendSocksData(seq uint64, data []byte) {
+func (s *SocksService) sendSocksData(seq uint64, data []byte) error {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      protocol.ADMIN_UUID,
@@ -229,6 +286,21 @@ func (s *SocksService) sendSocksData(seq uint64, data []byte) {
 	if err := s.ctrl.SendToNode(s.nodeUUID, header, msg); err != nil {
 		slog.Error("send socks data failed", "seq", seq, "error", err)
 		s.removeConn(seq)
+		return err
+	}
+	return nil
+}
+
+func (s *SocksService) sendSocksAck(seq uint64, credit uint64) {
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      protocol.ADMIN_UUID,
+		Accepter:    s.nodeUUID,
+		MessageType: protocol.SOCKSTCPACK,
+	}
+	msg := &protocol.SocksTCPAck{Seq: seq, Credit: credit}
+	if err := s.ctrl.SendToNode(s.nodeUUID, header, msg); err != nil {
+		slog.Error("send socks ack failed", "seq", seq, "error", err)
 	}
 }
 

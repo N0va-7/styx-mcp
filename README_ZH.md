@@ -37,6 +37,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 - 树形拓扑：主动（`-c`）/ 被动（`-l`），多级跳转
 - 双向 **HMAC** 预认证；可选 **TLS** / WebSocket
 - **SOCKS5** 开在 controller，本机工具经指定节点出站
+- 每流 **字节窗口流控**（禁止静默丢 SOCKS 数据；controller/agent 需同版本）
 - **Forward**（agent 监听）与 **Backward**（controller 监听）
 - 向节点 **上传** 文件（路径防穿越）
 - 异步任务 + `get_task_status`

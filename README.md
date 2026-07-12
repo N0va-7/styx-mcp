@@ -37,6 +37,7 @@ Inspired by Stowaway’s multi-hop model; re-oriented for **Model Context Protoc
 - Tree topology: active (`-c`) / passive (`-l`), multi-hop pivots
 - Mutual **HMAC** preauth + optional **TLS** / WebSocket transport
 - **SOCKS5** on the controller — local tools exit via a chosen node
+- Per-stream **byte-window flow control** (no silent SOCKS drops; matching controller/agent required)
 - **Forward** (listen on agent) & **backward** (listen on controller)
 - **Upload** files to nodes (path traversal sanitized)
 - Async tasks + `get_task_status`

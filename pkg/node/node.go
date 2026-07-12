@@ -422,6 +422,9 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 	case protocol.SOCKSTCPDATA:
 		req := message.(*protocol.SocksTCPData)
 		n.SocksManager.handleSocksData(req)
+	case protocol.SOCKSTCPACK:
+		req := message.(*protocol.SocksTCPAck)
+		n.SocksManager.handleSocksAck(req)
 	case protocol.SOCKSTCPFIN:
 		req := message.(*protocol.SocksTCPFin)
 		n.SocksManager.handleSocksFin(req)

@@ -375,6 +375,10 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		data := message.(*protocol.SocksTCPData)
 		c.handleSocksData(uuid, data)
 
+	case protocol.SOCKSTCPACK:
+		ack := message.(*protocol.SocksTCPAck)
+		c.handleSocksAck(uuid, ack)
+
 	case protocol.SOCKSTCPFIN:
 		fin := message.(*protocol.SocksTCPFin)
 		c.handleSocksFin(uuid, fin)
@@ -548,6 +552,16 @@ func (c *Controller) handleSocksData(uuid string, data *protocol.SocksTCPData) {
 		return
 	}
 	svc.handleData(data.Seq, data.Data)
+}
+
+func (c *Controller) handleSocksAck(uuid string, ack *protocol.SocksTCPAck) {
+	c.socksServicesMu.RLock()
+	svc, found := c.socksServices[uuid]
+	c.socksServicesMu.RUnlock()
+	if !found {
+		return
+	}
+	svc.handleAck(ack.Seq, ack.Credit)
 }
 
 func (c *Controller) handleSocksFin(uuid string, fin *protocol.SocksTCPFin) {
