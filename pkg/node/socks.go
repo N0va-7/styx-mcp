@@ -245,10 +245,10 @@ func (sm *SocksManager) sendSocksReady(ok bool) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      sm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.SOCKSREADY,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	sm.sendToUpstream(header, res)
 }
@@ -257,10 +257,10 @@ func (sm *SocksManager) sendSocksData(seq uint64, data []byte) error {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      sm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.SOCKSTCPDATA,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	msg := &protocol.SocksTCPData{Seq: seq, DataLen: uint64(len(data)), Data: data}
 	return sm.sendToUpstreamErr(header, msg)
@@ -270,10 +270,10 @@ func (sm *SocksManager) sendSocksAck(seq uint64, credit uint64) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      sm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.SOCKSTCPACK,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	sm.sendToUpstream(header, &protocol.SocksTCPAck{Seq: seq, Credit: credit})
 }
@@ -282,10 +282,10 @@ func (sm *SocksManager) sendSocksFin(seq uint64) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      sm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.SOCKSTCPFIN,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	sm.sendToUpstream(header, &protocol.SocksTCPFin{Seq: seq})
 }

@@ -58,10 +58,10 @@ func (n *Node) sendForwardReady(ok bool) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.FORWARDREADY,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)

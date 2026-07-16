@@ -7,7 +7,7 @@
 
 [English](README.md) | **简体中文**
 
-> 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude 一套 Stowaway 风格的跳板网络，不必再开 admin 交互界面。
+> 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude / Grok 一套面向 AI Agent 的跳板网络，不必再开 admin 交互界面。
 
 ```text
 LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
@@ -30,7 +30,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 | 主要使用者 | 人工操作 | Agent + 人工 |
 | 远程 shell / 下载 | 有 | 暂无 |
 
-借鉴 Stowaway 的多级代理模型，面向 **Model Context Protocol** 客户端重做控制面。
+为 **Agent 驱动** 的渗透/靶场流程而设计（MCP 原生控制面）。多级跳板拓扑借鉴 [Stowaway](https://github.com/ph4ntonn/Stowaway)；身份、加解密与工具面是 styx-mcp 自己的实现。
 
 ## 特性
 
@@ -51,7 +51,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 - 交互式远程 shell
 - 从节点下载到 controller
 - SOCKS 用户名密码认证
-- 完整 Stowaway 式 admin UI
+- 交互式 admin TUI（刻意不做：控制面就是 MCP）
 
 </details>
 
@@ -289,7 +289,7 @@ pkg/share/preauth/  HMAC 双向预认证
 
 ## 致谢
 
-多级代理思路大量参考 [Stowaway](https://github.com/ph4ntonn/Stowaway)（MIT，© ph4ntom）。  
+多级跳板思路借鉴 [Stowaway](https://github.com/ph4ntonn/Stowaway)（MIT，© ph4ntom），致谢。  
 MCP 服务端基于 [mcp-go](https://github.com/mark3labs/mcp-go)。
 
 ## 许可证

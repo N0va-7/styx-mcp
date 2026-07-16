@@ -25,7 +25,7 @@ func TestDeconstructDataRejectsHugeDataLen(t *testing.T) {
 	}()
 
 	_ = c2.SetReadDeadline(time.Now().Add(2 * time.Second))
-	msg := &RawMessage{Conn: c2, UUID: ADMIN_UUID, CryptoSecret: nil}
+	msg := &RawMessage{Conn: c2, UUID: ControllerUUID, CryptoSecret: nil}
 	_, _, err := msg.DeconstructData()
 	if err == nil {
 		t.Fatal("expected error for oversized DataLen")
@@ -47,7 +47,7 @@ func TestDeconstructDataRejectsHugeRouteLen(t *testing.T) {
 	}()
 
 	_ = c2.SetReadDeadline(time.Now().Add(2 * time.Second))
-	msg := &RawMessage{Conn: c2, UUID: ADMIN_UUID, CryptoSecret: nil}
+	msg := &RawMessage{Conn: c2, UUID: ControllerUUID, CryptoSecret: nil}
 	_, _, err := msg.DeconstructData()
 	if err == nil {
 		t.Fatal("expected error for oversized RouteLen")
@@ -61,7 +61,7 @@ func TestConstructDestructRoundTrip(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		r := NewDownMsg(c2, "unit-test-secret", ADMIN_UUID)
+		r := NewDownMsg(c2, "unit-test-secret", ControllerUUID)
 		_, payload, err := DestructMessage(r)
 		if err != nil {
 			done <- err
@@ -72,27 +72,27 @@ func TestConstructDestructRoundTrip(t *testing.T) {
 			done <- io.ErrUnexpectedEOF
 			return
 		}
-		if hm.Greeting != "Shhh..." {
+		if hm.Greeting != HelloFromAgent {
 			done <- io.ErrClosedPipe
 			return
 		}
 		done <- nil
 	}()
 
-	s := NewDownMsg(c1, "unit-test-secret", TEMP_UUID)
+	s := NewDownMsg(c1, "unit-test-secret", JoinUUID)
 	header := &Header{
 		Version:     1,
-		Sender:      TEMP_UUID,
-		Accepter:    ADMIN_UUID,
+		Sender:      JoinUUID,
+		Accepter:    ControllerUUID,
 		MessageType: HI,
-		Route:       TEMP_ROUTE,
-		RouteLen:    uint32(len(TEMP_ROUTE)),
+		Route:       NoRoute,
+		RouteLen:    uint32(len(NoRoute)),
 	}
 	hm := &HIMess{
-		GreetingLen: uint16(len("Shhh...")),
-		Greeting:    "Shhh...",
-		UUIDLen:     uint16(len(TEMP_UUID)),
-		UUID:        TEMP_UUID,
+		GreetingLen: uint16(len(HelloFromAgent)),
+		Greeting:    HelloFromAgent,
+		UUIDLen:     uint16(len(JoinUUID)),
+		UUID:        JoinUUID,
 		IsAdmin:     0,
 		IsReconnect: 0,
 	}

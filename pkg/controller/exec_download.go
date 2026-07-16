@@ -21,7 +21,7 @@ type pendingDownload struct {
 func (c *Controller) StartExec(nodeUUID, taskID, command, workdir string, timeoutSec uint32) error {
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    nodeUUID,
 		MessageType: protocol.EXECREQ,
 	}
@@ -59,7 +59,7 @@ func (c *Controller) StartDownload(nodeUUID, taskID, remotePath, localPath strin
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    nodeUUID,
 		MessageType: protocol.FILEDOWNREQ,
 	}

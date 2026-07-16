@@ -52,10 +52,10 @@ func (n *Node) sendListenRes(ok bool) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.LISTENRES,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	if err := n.sendToParent(header, res); err != nil {
@@ -94,7 +94,7 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 	}
 
 	// The child treats us as admin during handshake.
-	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.ADMIN_UUID)
+	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.ControllerUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 	if err != nil {
 		slog.Error("read child HI failed", "error", err)
@@ -108,7 +108,7 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 	}
 
 	mmess := fMessage.(*protocol.HIMess)
-	if mmess.Greeting != "Shhh..." || mmess.IsAdmin != 0 {
+	if mmess.Greeting != protocol.HelloFromAgent || mmess.IsAdmin != 0 {
 		conn.Close()
 		return
 	}
@@ -123,8 +123,8 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 
 	// Respond to child with HI.
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Keep silent")),
-		Greeting:    "Keep silent",
+		GreetingLen: uint16(len(protocol.HelloFromController)),
+		Greeting:    protocol.HelloFromController,
 		UUIDLen:     uint16(len(childUUID)),
 		UUID:        childUUID,
 		IsAdmin:     1,
@@ -133,10 +133,10 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 	hiHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	downMsg := protocol.NewDownMsg(conn, n.Options.Secret, n.UUID)
@@ -157,10 +157,10 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 	uuidHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.UUID,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	downMsg = protocol.NewDownMsg(conn, n.Options.Secret, n.UUID)
@@ -197,9 +197,9 @@ func (n *Node) relayChildToUpstream(conn net.Conn, childUUID string) {
 
 		// Set sender to child UUID so controller can identify the source.
 		header.Sender = childUUID
-		if header.Accepter == protocol.ADMIN_UUID {
-			header.Route = protocol.TEMP_ROUTE
-			header.RouteLen = uint32(len(protocol.TEMP_ROUTE))
+		if header.Accepter == protocol.ControllerUUID {
+			header.Route = protocol.NoRoute
+			header.RouteLen = uint32(len(protocol.NoRoute))
 		}
 
 		sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
@@ -230,10 +230,10 @@ func (n *Node) removeChild(uuid string) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.NODEOFFLINE,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	if err := n.sendToParent(header, off); err != nil {
 		slog.Error("notify child offline failed", "error", err)

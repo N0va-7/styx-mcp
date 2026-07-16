@@ -26,10 +26,10 @@ func (n *Node) doConnect(req *protocol.ConnectStart) {
 
 	// Parent (active connector) announces itself with admin flag set.
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Shhh...")),
-		Greeting:    "Shhh...",
-		UUIDLen:     uint16(len(protocol.TEMP_UUID)),
-		UUID:        protocol.TEMP_UUID,
+		GreetingLen: uint16(len(protocol.HelloFromAgent)),
+		Greeting:    protocol.HelloFromAgent,
+		UUIDLen:     uint16(len(protocol.JoinUUID)),
+		UUID:        protocol.JoinUUID,
 		IsAdmin:     1,
 		IsReconnect: 0,
 	}
@@ -37,10 +37,10 @@ func (n *Node) doConnect(req *protocol.ConnectStart) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	if n.Options.TlsEnable {
@@ -79,9 +79,9 @@ func (n *Node) doConnect(req *protocol.ConnectStart) {
 		return
 	}
 
-	// Read child HI response. The child treats us as admin, so use ADMIN_UUID
-	// as the local UUID to trigger decryption of messages addressed to ADMIN_UUID.
-	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.ADMIN_UUID)
+	// Read child HI response. The child treats us as admin, so use ControllerUUID
+	// as the local UUID to trigger decryption of messages addressed to ControllerUUID.
+	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.ControllerUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 	if err != nil {
 		slog.Error("read child HI response failed", "error", err)
@@ -98,7 +98,7 @@ func (n *Node) doConnect(req *protocol.ConnectStart) {
 	}
 
 	mmess := fMessage.(*protocol.HIMess)
-	if mmess.Greeting != "Keep silent" || mmess.IsAdmin != 0 {
+	if mmess.Greeting != protocol.HelloFromController || mmess.IsAdmin != 0 {
 		slog.Error("child HI invalid", "greeting", mmess.Greeting, "isAdmin", mmess.IsAdmin)
 		conn.Close()
 		n.sendConnectDone(false)
@@ -122,10 +122,10 @@ func (n *Node) doConnect(req *protocol.ConnectStart) {
 	uuidHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.UUID,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	downMsg := protocol.NewDownMsg(conn, n.Options.Secret, n.UUID)
@@ -161,10 +161,10 @@ func (n *Node) sendConnectDone(ok bool) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.CONNECTDONE,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	if err := n.sendToParent(header, res); err != nil {

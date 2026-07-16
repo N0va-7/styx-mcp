@@ -7,7 +7,7 @@
 
 **English** | [简体中文](README_ZH.md)
 
-> Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude a Stowaway-style jump network without a separate admin TUI.
+> Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude / Grok an AI-native jump network without a separate admin TUI.
 
 ```text
 LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
@@ -30,7 +30,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 | Primary user | Human operator | Agent + human |
 | Remote shell / download | Yes | Not yet |
 
-Inspired by Stowaway’s multi-hop model; re-oriented for **Model Context Protocol** clients.
+Built for **agent-driven** ops (MCP-native control plane). Multi-hop topology draws inspiration from [Stowaway](https://github.com/ph4ntonn/Stowaway); the identity, crypto, and tool surface are styx-mcp’s own.
 
 ## Features
 
@@ -51,7 +51,7 @@ Inspired by Stowaway’s multi-hop model; re-oriented for **Model Context Protoc
 - Interactive remote shell
 - Download from node → controller
 - SOCKS username/password
-- Full Stowaway-style admin UI
+- Interactive admin TUI (by design: MCP is the control plane)
 
 </details>
 
@@ -289,7 +289,7 @@ pkg/share/preauth/  HMAC mutual preauth
 
 ## Acknowledgments
 
-Multi-hop proxy design draws heavily from [Stowaway](https://github.com/ph4ntonn/Stowaway) (MIT, © ph4ntom).  
+Multi-hop jump-proxy ideas are inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway) (MIT, © ph4ntom) — thank you.  
 MCP server stack uses [mcp-go](https://github.com/mark3labs/mcp-go).
 
 ## License

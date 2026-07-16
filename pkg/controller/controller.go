@@ -122,7 +122,7 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
-	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 	if err != nil {
 		conn.Close()
@@ -135,27 +135,27 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 	}
 
 	mmess := fMessage.(*protocol.HIMess)
-	if mmess.Greeting != "Shhh..." || mmess.IsAdmin != 0 {
+	if mmess.Greeting != protocol.HelloFromAgent || mmess.IsAdmin != 0 {
 		conn.Close()
 		return
 	}
 
-	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Keep silent")),
-		Greeting:    "Keep silent",
-		UUIDLen:     uint16(len(protocol.ADMIN_UUID)),
-		UUID:        protocol.ADMIN_UUID,
+		GreetingLen: uint16(len(protocol.HelloFromController)),
+		Greeting:    protocol.HelloFromController,
+		UUIDLen:     uint16(len(protocol.ControllerUUID)),
+		UUID:        protocol.ControllerUUID,
 		IsAdmin:     1,
 		IsReconnect: 0,
 	}
 	hiHeader := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Sender:      protocol.ControllerUUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	if err := protocol.ConstructMessage(sMessage, hiHeader, hiMess, false); err != nil {
 		conn.Close()
@@ -175,13 +175,13 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 	uuidMess := &protocol.UUIDMess{UUIDLen: uint16(len(uuid)), UUID: uuid}
 	uuidHeader := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Sender:      protocol.ControllerUUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.UUID,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
-	sMessage = protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	sMessage = protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	if err := protocol.ConstructMessage(sMessage, uuidHeader, uuidMess, false); err != nil {
 		conn.Close()
 		return
@@ -196,20 +196,20 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 
 func (c *Controller) activeConnect() (net.Conn, error) {
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Shhh...")),
-		Greeting:    "Shhh...",
-		UUIDLen:     uint16(len(protocol.ADMIN_UUID)),
-		UUID:        protocol.ADMIN_UUID,
+		GreetingLen: uint16(len(protocol.HelloFromAgent)),
+		Greeting:    protocol.HelloFromAgent,
+		UUIDLen:     uint16(len(protocol.ControllerUUID)),
+		UUID:        protocol.ControllerUUID,
 		IsAdmin:     1,
 		IsReconnect: 0,
 	}
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
-		Accepter:    protocol.TEMP_UUID,
+		Sender:      protocol.ControllerUUID,
+		Accepter:    protocol.JoinUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	for {
@@ -239,7 +239,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 			return nil, err
 		}
 
-		sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+		sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 		if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
 			conn.Close()
 			return nil, err
@@ -249,7 +249,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 			return nil, err
 		}
 
-		rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+		rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 		fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 		if err != nil {
 			conn.Close()
@@ -258,7 +258,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 
 		if fHeader.MessageType == protocol.HI {
 			mmess := fMessage.(*protocol.HIMess)
-			if mmess.Greeting == "Keep silent" && mmess.IsAdmin == 0 {
+			if mmess.Greeting == protocol.HelloFromController && mmess.IsAdmin == 0 {
 				return conn, nil
 			}
 		}
@@ -270,7 +270,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 
 func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 	// Wait for MYINFO to know the UUID, then start the read loop.
-	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 	if err != nil {
 		conn.Close()
@@ -290,11 +290,11 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 	c.connsMu.Unlock()
 
 	// Register in topology.
-	parentUUID := protocol.ADMIN_UUID
+	parentUUID := protocol.ControllerUUID
 	if !isFirst {
 		// Non-first nodes should be registered by their parent via CHILDUUIDREQ.
 		// If they connect directly, we still add them under admin for safety.
-		parentUUID = protocol.ADMIN_UUID
+		parentUUID = protocol.ControllerUUID
 	}
 
 	c.Topology.TaskChan <- &topology.Task{
@@ -324,7 +324,7 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 }
 
 func (c *Controller) readLoop(uuid string, conn net.Conn) {
-	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 
 	for {
 		header, message, err := protocol.DestructMessage(rMessage)
@@ -440,7 +440,7 @@ func (c *Controller) handleChildUUIDReq(parentUUID string, req *protocol.ChildUU
 	res := &protocol.ChildUUIDRes{UUIDLen: uint16(len(childUUID)), UUID: childUUID}
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    parentUUID,
 		MessageType: protocol.CHILDUUIDRES,
 	}
@@ -502,7 +502,7 @@ func (c *Controller) SendToNode(uuid string, header *protocol.Header, payload in
 		header.RouteLen = uint32(len(route))
 	}
 
-	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ADMIN_UUID)
+	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	if err := protocol.ConstructMessage(sMessage, header, payload, false); err != nil {
 		return err
 	}

@@ -278,7 +278,7 @@ func (s *Server) handleAddNodeMemo(ctx context.Context, request mcp.CallToolRequ
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    res.UUID,
 		MessageType: protocol.MYMEMO,
 	}
@@ -316,7 +316,7 @@ func (s *Server) handleDeleteNodeMemo(ctx context.Context, request mcp.CallToolR
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    res.UUID,
 		MessageType: protocol.MYMEMO,
 	}
@@ -356,7 +356,7 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
+			Sender:      protocol.ControllerUUID,
 			Accepter:    res.UUID,
 			MessageType: protocol.LISTENREQ,
 		}
@@ -406,7 +406,7 @@ func (s *Server) handleConnectNode(ctx context.Context, request mcp.CallToolRequ
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
+			Sender:      protocol.ControllerUUID,
 			Accepter:    res.UUID,
 			MessageType: protocol.CONNECTSTART,
 		}
@@ -500,7 +500,7 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
+			Sender:      protocol.ControllerUUID,
 			Accepter:    res.UUID,
 			MessageType: protocol.FORWARDSTART,
 		}
@@ -613,7 +613,7 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 		// Send FILESTATREQ.
 		statHeader := &protocol.Header{
 			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
+			Sender:      protocol.ControllerUUID,
 			Accepter:    res.UUID,
 			MessageType: protocol.FILESTATREQ,
 		}
@@ -631,7 +631,7 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 		// Send single FILEDATA slice.
 		dataHeader := &protocol.Header{
 			Version:     1,
-			Sender:      protocol.ADMIN_UUID,
+			Sender:      protocol.ControllerUUID,
 			Accepter:    res.UUID,
 			MessageType: protocol.FILEDATA,
 		}
@@ -784,7 +784,7 @@ func (s *Server) handleShutdownNode(ctx context.Context, request mcp.CallToolReq
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    res.UUID,
 		MessageType: protocol.SHUTDOWN,
 	}

@@ -59,10 +59,21 @@ const (
 	EXECRES
 )
 
+// Identity and handshake strings are styx-native (10-char IDs fit the wire
+// Sender/Accepter fields). Multi-hop topology is still inspired by classic
+// jump-proxy designs; greetings are not borrowed from other tools.
 const (
-	ADMIN_UUID = "IAMADMINXD"
-	TEMP_UUID  = "IAMNEWHERE"
-	TEMP_ROUTE = "THEREISNOROUTE"
+	// ControllerUUID is the control-plane identity on the wire (exactly 10 chars).
+	ControllerUUID = "STYXCTRL01"
+	// JoinUUID is used only during the pre-assignment handshake (exactly 10 chars).
+	JoinUUID = "STYXJOIN00"
+	// NoRoute is a placeholder route before a real hop path exists.
+	NoRoute = "styx:noroute"
+
+	// HelloFromAgent is the HI greeting sent by joining agents.
+	HelloFromAgent = "styx/join"
+	// HelloFromController is the HI greeting sent by the controller (or parent).
+	HelloFromController = "styx/bound"
 
 	// MaxRouteLen is the maximum accepted route field length (bytes).
 	MaxRouteLen = 4096

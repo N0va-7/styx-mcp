@@ -78,7 +78,7 @@ func (c *Controller) StartSocks(nodeUUID, localAddr string) error {
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    nodeUUID,
 		MessageType: protocol.SOCKSSTART,
 	}
@@ -278,7 +278,7 @@ func (s *SocksService) removeConn(seq uint64) {
 func (s *SocksService) sendSocksData(seq uint64, data []byte) error {
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    s.nodeUUID,
 		MessageType: protocol.SOCKSTCPDATA,
 	}
@@ -294,7 +294,7 @@ func (s *SocksService) sendSocksData(seq uint64, data []byte) error {
 func (s *SocksService) sendSocksAck(seq uint64, credit uint64) {
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    s.nodeUUID,
 		MessageType: protocol.SOCKSTCPACK,
 	}
@@ -307,7 +307,7 @@ func (s *SocksService) sendSocksAck(seq uint64, credit uint64) {
 func (s *SocksService) sendSocksFin(seq uint64) {
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.ADMIN_UUID,
+		Sender:      protocol.ControllerUUID,
 		Accepter:    s.nodeUUID,
 		MessageType: protocol.SOCKSTCPFIN,
 	}

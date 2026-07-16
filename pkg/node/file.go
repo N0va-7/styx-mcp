@@ -76,10 +76,10 @@ func (n *Node) runFileDownload(req *protocol.FileDownReq) {
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      n.UUID,
-			Accepter:    protocol.ADMIN_UUID,
+			Accepter:    protocol.ControllerUUID,
 			MessageType: protocol.FILEDOWNRES,
-			RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-			Route:       protocol.TEMP_ROUTE,
+			RouteLen:    uint32(len(protocol.NoRoute)),
+			Route:       protocol.NoRoute,
 		}
 		res := &protocol.FileDownRes{OK: 0}
 		if ok {
@@ -114,10 +114,10 @@ func (n *Node) runFileDownload(req *protocol.FileDownReq) {
 	statHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.FILESTATREQ,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	stat := &protocol.FileStatReq{
 		FilenameLen: uint32(len(path)),
@@ -133,10 +133,10 @@ func (n *Node) runFileDownload(req *protocol.FileDownReq) {
 	dataHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.FILEDATA,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	chunk := &protocol.FileData{DataLen: uint64(len(data)), Data: data}
 	if err := n.sendToParent(dataHeader, chunk); err != nil {

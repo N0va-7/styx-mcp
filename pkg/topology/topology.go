@@ -210,7 +210,7 @@ func (t *Topology) checkNode(task *Task) {
 
 func (t *Topology) addNode(task *Task) {
 	if task.IsFirst {
-		task.Target.ParentUUID = protocol.ADMIN_UUID
+		task.Target.ParentUUID = protocol.ControllerUUID
 	} else {
 		task.Target.ParentUUID = task.ParentUUID
 		parentNum := t.id2Num(task.ParentUUID)
@@ -232,7 +232,7 @@ func (t *Topology) calculate() {
 
 	for num := range t.nodes {
 		node := t.nodes[num]
-		if node.ParentUUID == protocol.ADMIN_UUID {
+		if node.ParentUUID == protocol.ControllerUUID {
 			newRoutes[node.UUID] = ""
 			continue
 		}
@@ -240,7 +240,7 @@ func (t *Topology) calculate() {
 		var route []string
 		currentNum := num
 		for {
-			if t.nodes[currentNum].ParentUUID == protocol.ADMIN_UUID {
+			if t.nodes[currentNum].ParentUUID == protocol.ControllerUUID {
 				utils.StringSliceReverse(route)
 				newRoutes[node.UUID] = strings.Join(route, ":")
 				break
@@ -304,7 +304,7 @@ func (t *Topology) getFirstHop(task *Task) {
 	current := num
 	for {
 		node := t.nodes[current]
-		if node.ParentUUID == protocol.ADMIN_UUID {
+		if node.ParentUUID == protocol.ControllerUUID {
 			t.ResultChan <- &Result{UUID: node.UUID, Route: strings.Join(routeParts, ":")}
 			return
 		}
@@ -386,7 +386,7 @@ func (t *Topology) findChildren(ready *[]int, idNum int) {
 
 func (t *Topology) reonlineNode(task *Task) {
 	if task.IsFirst {
-		task.Target.ParentUUID = protocol.ADMIN_UUID
+		task.Target.ParentUUID = protocol.ControllerUUID
 	} else {
 		task.Target.ParentUUID = task.ParentUUID
 		parentNum := t.id2Num(task.ParentUUID)

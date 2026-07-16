@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -12,20 +11,13 @@ import (
 	"strings"
 )
 
-// GenerateUUID returns a 10-byte random string suitable for node IDs.
+// GenerateUUID returns a 10-character hex string for node IDs (wire field width).
 func GenerateUUID() string {
 	b := make([]byte, 5)
 	if _, err := rand.Read(b); err != nil {
 		return ""
 	}
 	return hex.EncodeToString(b)
-}
-
-// GetStringMd5 returns the MD5 hex digest of a string.
-func GetStringMd5(s string) string {
-	h := md5.New()
-	h.Write([]byte(s))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // CheckIPPort parses an address string like "127.0.0.1:8080" or "8080".
@@ -80,6 +72,3 @@ func StringSliceReverse(s []string) {
 		s[i], s[j] = s[j], s[i]
 	}
 }
-
-// CheckRange is a no-op placeholder kept for compatibility with Stowaway-style usage.
-func CheckRange(_ []int) {}

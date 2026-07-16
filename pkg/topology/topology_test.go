@@ -16,7 +16,7 @@ func TestListAllSkipsSparseIDs(t *testing.T) {
 		topo.TaskChan <- &Task{
 			Mode:       AddNode,
 			Target:     NewNode(uuid, "10.0.0."+uuid[4:5]),
-			ParentUUID: protocol.ADMIN_UUID,
+			ParentUUID: protocol.ControllerUUID,
 			IsFirst:    true,
 		}
 		res := <-topo.ResultChan

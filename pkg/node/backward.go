@@ -116,10 +116,10 @@ func (bm *BackwardManager) sendBackwardReady(seq uint64, ok bool) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      bm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.BACKWARDREADY,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	bm.sendToUpstream(header, res)
 }
@@ -128,10 +128,10 @@ func (bm *BackwardManager) sendBackwardData(seq uint64, data []byte) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      bm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.BACKWARDDATA,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	msg := &protocol.BackwardData{Seq: seq, DataLen: uint64(len(data)), Data: data}
 	bm.sendToUpstream(header, msg)
@@ -141,10 +141,10 @@ func (bm *BackwardManager) sendBackwardFin(seq uint64) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      bm.n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.BACKWARDFIN,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	bm.sendToUpstream(header, &protocol.BackWardFin{Seq: seq})
 }

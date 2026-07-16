@@ -89,10 +89,10 @@ func (n *Node) runExec(req *protocol.ExecReq) {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.EXECRES,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	if err := n.sendToParent(header, res); err != nil {
 		slog.Error("send exec result failed", "task", req.TaskID, "error", err)

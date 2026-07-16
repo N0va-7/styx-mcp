@@ -60,7 +60,7 @@ type ChildrenMessage struct {
 // NewNode creates a new node runtime.
 func NewNode(opt *Options) *Node {
 	n := &Node{
-		UUID:        protocol.TEMP_UUID,
+		UUID:        protocol.JoinUUID,
 		Options:     opt,
 		children:    make(map[string]*ChildConn),
 		childrenMsg: make(chan *ChildrenMessage, 256),
@@ -106,21 +106,21 @@ func (n *Node) establishConnection() (net.Conn, error) {
 
 func (n *Node) activeConnect() (net.Conn, error) {
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Shhh...")),
-		Greeting:    "Shhh...",
-		UUIDLen:     uint16(len(protocol.TEMP_UUID)),
-		UUID:        protocol.TEMP_UUID,
+		GreetingLen: uint16(len(protocol.HelloFromAgent)),
+		Greeting:    protocol.HelloFromAgent,
+		UUIDLen:     uint16(len(protocol.JoinUUID)),
+		UUID:        protocol.JoinUUID,
 		IsAdmin:     0,
 		IsReconnect: 0,
 	}
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.TEMP_UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Sender:      protocol.JoinUUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	for {
@@ -155,7 +155,7 @@ func (n *Node) activeConnect() (net.Conn, error) {
 			return nil, err
 		}
 
-		sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.TEMP_UUID)
+		sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
 		if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
 			conn.Close()
 			return nil, err
@@ -165,7 +165,7 @@ func (n *Node) activeConnect() (net.Conn, error) {
 			return nil, err
 		}
 
-		rMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.TEMP_UUID)
+		rMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
 		fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 		if err != nil {
 			conn.Close()
@@ -178,7 +178,7 @@ func (n *Node) activeConnect() (net.Conn, error) {
 
 		if fHeader.MessageType == protocol.HI {
 			mmess := fMessage.(*protocol.HIMess)
-			if mmess.Greeting == "Keep silent" && mmess.IsAdmin == 1 {
+			if mmess.Greeting == protocol.HelloFromController && mmess.IsAdmin == 1 {
 				n.UUID = n.achieveUUID(conn)
 				if n.UUID == "" {
 					conn.Close()
@@ -207,21 +207,21 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 	defer listener.Close()
 
 	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len("Keep silent")),
-		Greeting:    "Keep silent",
-		UUIDLen:     uint16(len(protocol.TEMP_UUID)),
-		UUID:        protocol.TEMP_UUID,
+		GreetingLen: uint16(len(protocol.HelloFromController)),
+		Greeting:    protocol.HelloFromController,
+		UUIDLen:     uint16(len(protocol.JoinUUID)),
+		UUID:        protocol.JoinUUID,
 		IsAdmin:     0,
 		IsReconnect: 0,
 	}
 
 	header := &protocol.Header{
 		Version:     1,
-		Sender:      protocol.TEMP_UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Sender:      protocol.JoinUUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	for {
@@ -256,7 +256,7 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 		}
 		slog.Info("preauth success")
 
-		rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.TEMP_UUID)
+		rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.JoinUUID)
 		fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 		if err != nil {
 			slog.Error("read HI failed", "error", err)
@@ -267,8 +267,8 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 
 		if fHeader.MessageType == protocol.HI {
 			mmess := fMessage.(*protocol.HIMess)
-			if mmess.Greeting == "Shhh..." && mmess.IsAdmin == 1 {
-				sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.TEMP_UUID)
+			if mmess.Greeting == protocol.HelloFromAgent && mmess.IsAdmin == 1 {
+				sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
 				if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
 					conn.Close()
 					continue
@@ -294,7 +294,7 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 }
 
 func (n *Node) achieveUUID(conn net.Conn) string {
-	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.TEMP_UUID)
+	rMessage := protocol.NewDownMsg(conn, n.Options.Secret, protocol.JoinUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
 	if err != nil {
 		slog.Error("achieveUUID read failed", "error", err)
@@ -318,10 +318,10 @@ func (n *Node) sendMyInfo() {
 	header := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.MYINFO,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 
 	info := &protocol.MyInfo{
@@ -362,7 +362,7 @@ func (n *Node) handleUpstream() {
 
 		slog.Info("upstream message", "type", header.MessageType, "accepter", header.Accepter, "sender", header.Sender, "me", n.UUID)
 
-		if header.Accepter == n.UUID || header.Accepter == protocol.TEMP_UUID {
+		if header.Accepter == n.UUID || header.Accepter == protocol.JoinUUID {
 			n.handleLocalMessage(header, message)
 			continue
 		}
@@ -388,7 +388,7 @@ func (n *Node) handleUpstream() {
 		}
 
 		// Message is for admin or another ancestor: relay upstream.
-		if header.Accepter == protocol.ADMIN_UUID || header.Accepter != n.UUID {
+		if header.Accepter == protocol.ControllerUUID || header.Accepter != n.UUID {
 			payload, ok := message.([]byte)
 			if !ok {
 				slog.Warn("relay payload is not []byte", "type", header.MessageType)
@@ -565,10 +565,10 @@ func (n *Node) requestChildUUID(childIP string) (string, error) {
 	reqHeader := &protocol.Header{
 		Version:     1,
 		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
+		Accepter:    protocol.ControllerUUID,
 		MessageType: protocol.CHILDUUIDREQ,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
 	}
 	if err := n.sendToParent(reqHeader, childReq); err != nil {
 		return "", fmt.Errorf("send child uuid req: %w", err)

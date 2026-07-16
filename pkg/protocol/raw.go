@@ -190,13 +190,12 @@ func (message *RawMessage) DeconstructData() (*Header, interface{}, error) {
 		}
 	}
 
-	// Decrypt if the message is addressed to us, to temp, or is addressed
-	// to the controller and we are the controller.
-	// Relay traffic from children addressed to ADMIN_UUID stays encrypted
-	// because intermediate nodes are not ADMIN_UUID.
-	shouldDecrypt := header.Accepter == TEMP_UUID ||
+	// Decrypt when addressed to us, the join placeholder, or the controller
+	// identity while we are the controller. Intermediate hops leave
+	// ControllerUUID-bound payloads encrypted (pass-through).
+	shouldDecrypt := header.Accepter == JoinUUID ||
 		message.UUID == header.Accepter ||
-		(message.UUID == ADMIN_UUID && header.Accepter == ADMIN_UUID)
+		(message.UUID == ControllerUUID && header.Accepter == ControllerUUID)
 	if !shouldDecrypt {
 		return header, dataBuf, nil
 	}
