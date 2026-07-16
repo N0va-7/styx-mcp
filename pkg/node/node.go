@@ -412,52 +412,100 @@ func (n *Node) isChild(uuid string) bool {
 func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) {
 	switch header.MessageType {
 	case protocol.MYMEMO:
-		mmess := message.(*protocol.MyMemo)
+		mmess, ok := asMsg[*protocol.MyMemo](message, "MYMEMO")
+		if !ok {
+			return
+		}
 		n.Memo = mmess.Memo
 	case protocol.LISTENREQ:
-		req := message.(*protocol.ListenReq)
+		req, ok := asMsg[*protocol.ListenReq](message, "LISTENREQ")
+		if !ok {
+			return
+		}
 		n.handleListen(req) // non-blocking (spawns goroutine)
 	case protocol.CONNECTSTART:
-		req := message.(*protocol.ConnectStart)
+		req, ok := asMsg[*protocol.ConnectStart](message, "CONNECTSTART")
+		if !ok {
+			return
+		}
 		n.handleConnect(req) // non-blocking (spawns goroutine)
 	case protocol.CHILDUUIDRES:
-		res := message.(*protocol.ChildUUIDRes)
+		res, ok := asMsg[*protocol.ChildUUIDRes](message, "CHILDUUIDRES")
+		if !ok {
+			return
+		}
 		n.deliverChildUUID(res)
 	case protocol.SOCKSSTART:
-		req := message.(*protocol.SocksStart)
+		req, ok := asMsg[*protocol.SocksStart](message, "SOCKSSTART")
+		if !ok {
+			return
+		}
 		n.SocksManager.handleSocksStart(req)
 	case protocol.SOCKSTCPDATA:
-		req := message.(*protocol.SocksTCPData)
+		req, ok := asMsg[*protocol.SocksTCPData](message, "SOCKSTCPDATA")
+		if !ok {
+			return
+		}
 		n.SocksManager.handleSocksData(req)
 	case protocol.SOCKSTCPACK:
-		req := message.(*protocol.SocksTCPAck)
+		req, ok := asMsg[*protocol.SocksTCPAck](message, "SOCKSTCPACK")
+		if !ok {
+			return
+		}
 		n.SocksManager.handleSocksAck(req)
 	case protocol.SOCKSTCPFIN:
-		req := message.(*protocol.SocksTCPFin)
+		req, ok := asMsg[*protocol.SocksTCPFin](message, "SOCKSTCPFIN")
+		if !ok {
+			return
+		}
 		n.SocksManager.handleSocksFin(req)
 	case protocol.FORWARDSTART:
-		req := message.(*protocol.ForwardStart)
+		req, ok := asMsg[*protocol.ForwardStart](message, "FORWARDSTART")
+		if !ok {
+			return
+		}
 		n.handleForward(req) // non-blocking (spawns goroutine)
 	case protocol.BACKWARDSTART:
-		req := message.(*protocol.BackwardStart)
+		req, ok := asMsg[*protocol.BackwardStart](message, "BACKWARDSTART")
+		if !ok {
+			return
+		}
 		n.BackwardManager.handleBackwardStart(req)
 	case protocol.BACKWARDDATA:
-		req := message.(*protocol.BackwardData)
+		req, ok := asMsg[*protocol.BackwardData](message, "BACKWARDDATA")
+		if !ok {
+			return
+		}
 		n.BackwardManager.handleBackwardData(req)
 	case protocol.BACKWARDFIN:
-		req := message.(*protocol.BackWardFin)
+		req, ok := asMsg[*protocol.BackWardFin](message, "BACKWARDFIN")
+		if !ok {
+			return
+		}
 		n.BackwardManager.handleBackwardFin(req)
 	case protocol.FILESTATREQ:
-		req := message.(*protocol.FileStatReq)
+		req, ok := asMsg[*protocol.FileStatReq](message, "FILESTATREQ")
+		if !ok {
+			return
+		}
 		n.handleFileStat(req)
 	case protocol.FILEDATA:
-		req := message.(*protocol.FileData)
+		req, ok := asMsg[*protocol.FileData](message, "FILEDATA")
+		if !ok {
+			return
+		}
 		n.handleFileData(req)
 	case protocol.FILEDOWNREQ:
-		req := message.(*protocol.FileDownReq)
+		req, ok := asMsg[*protocol.FileDownReq](message, "FILEDOWNREQ")
+		if !ok {
+			return
+		}
 		n.handleFileDownReq(req)
 	case protocol.EXECREQ:
-		req := message.(*protocol.ExecReq)
+		req, ok := asMsg[*protocol.ExecReq](message, "EXECREQ")
+		if !ok {
+			return
+		}
 		n.handleExecReq(req)
 	case protocol.SHUTDOWN:
 		n.ParentConn.Close()
@@ -467,6 +515,17 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 	default:
 		slog.Warn("unhandled message type", "type", header.MessageType)
 	}
+}
+
+// asMsg type-asserts a decoded payload; logs and returns false instead of panicking.
+func asMsg[T any](message interface{}, kind string) (T, bool) {
+	var zero T
+	v, ok := message.(T)
+	if !ok {
+		slog.Warn("unexpected payload type", "kind", kind, "got", fmt.Sprintf("%T", message))
+		return zero, false
+	}
+	return v, true
 }
 
 func (n *Node) dispatchChildrenMessages() {

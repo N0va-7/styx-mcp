@@ -1,13 +1,13 @@
 package controller
 
 import (
-	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"sync"
-	"time"
+	"syscall"
 
 	"styx-mcp/internal/utils"
 	"styx-mcp/pkg/protocol"
@@ -53,42 +53,56 @@ func NewController(opt *Options) *Controller {
 	}
 }
 
-// Run starts the controller.
-func (c *Controller) Run() error {
+// Start brings up topology and agent networking.
+// For passive mode it binds the listen socket before returning; bind failure is a hard error
+// so MCP clients do not sit "healthy" with an empty topology.
+func (c *Controller) Start() error {
 	preauth.GenerateToken(c.Options.Secret)
 	protocol.SetUpDownStream("raw", c.Options.Downstream)
 
 	go c.Topology.Run()
 
 	if c.Options.Mode() == "passive" {
-		go c.acceptLoop()
-	} else {
-		conn, err := c.activeConnect()
-		if err != nil {
-			return err
-		}
-		go c.handleNode(conn, true)
+		return c.startPassive()
 	}
+	return c.startActive()
+}
 
-	// Keep main goroutine alive.
+// Run is kept for callers that expect a blocking API; it starts networking then blocks forever.
+func (c *Controller) Run() error {
+	if err := c.Start(); err != nil {
+		return err
+	}
 	select {}
 }
 
-func (c *Controller) acceptLoop() {
+func (c *Controller) startPassive() error {
 	listenAddr, _, err := utils.CheckIPPort(c.Options.Listen)
 	if err != nil {
-		slog.Error("invalid listen address", "error", err)
-		return
+		return fmt.Errorf("invalid listen address %q: %w", c.Options.Listen, err)
 	}
 
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		slog.Error("listen failed", "error", err)
-		return
+		return listenBindError(listenAddr, err)
 	}
-	defer listener.Close()
 
 	slog.Info("controller listening", "addr", listenAddr)
+	go c.acceptLoop(listener)
+	return nil
+}
+
+func (c *Controller) startActive() error {
+	conn, err := c.activeConnect()
+	if err != nil {
+		return err
+	}
+	go c.handleNode(conn, true)
+	return nil
+}
+
+func (c *Controller) acceptLoop(listener net.Listener) {
+	defer listener.Close()
 
 	for {
 		conn, err := listener.Accept()
@@ -98,6 +112,28 @@ func (c *Controller) acceptLoop() {
 		}
 		go c.handleIncoming(conn)
 	}
+}
+
+// listenBindError formats listen failures with an actionable port-conflict hint.
+func listenBindError(addr string, err error) error {
+	if isAddrInUse(err) {
+		return fmt.Errorf(
+			"listen on %s: %w (address already in use — another styx-mcp/Cursor/Grok controller may hold this port; free it or set STYX_LISTEN)",
+			addr, err,
+		)
+	}
+	return fmt.Errorf("listen on %s: %w", addr, err)
+}
+
+func isAddrInUse(err error) bool {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return errors.Is(opErr.Err, syscall.EADDRINUSE)
+	}
+	return false
 }
 
 func (c *Controller) handleIncoming(conn net.Conn) {
@@ -134,8 +170,8 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
-	mmess := fMessage.(*protocol.HIMess)
-	if mmess.Greeting != protocol.HelloFromAgent || mmess.IsAdmin != 0 {
+	mmess, ok := asMsg[*protocol.HIMess](fMessage, "HI", conn.RemoteAddr().String())
+	if !ok || mmess.Greeting != protocol.HelloFromAgent || mmess.IsAdmin != 0 {
 		conn.Close()
 		return
 	}
@@ -345,7 +381,10 @@ func (c *Controller) readLoop(uuid string, conn net.Conn) {
 func (c *Controller) handleMessage(uuid string, header *protocol.Header, message interface{}) {
 	switch header.MessageType {
 	case protocol.MYINFO:
-		info := message.(*protocol.MyInfo)
+		info, ok := asMsg[*protocol.MyInfo](message, "MYINFO", uuid)
+		if !ok {
+			return
+		}
 		c.Topology.TaskChan <- &topology.Task{
 			Mode:     topology.UpdateDetail,
 			UUID:     info.UUID,
@@ -356,70 +395,120 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		<-c.Topology.ResultChan
 
 	case protocol.CHILDUUIDREQ:
-		req := message.(*protocol.ChildUUIDReq)
+		req, ok := asMsg[*protocol.ChildUUIDReq](message, "CHILDUUIDREQ", uuid)
+		if !ok {
+			return
+		}
 		// The relaying parent overwrites Sender with the actual child's UUID.
 		c.handleChildUUIDReq(header.Sender, req)
 
 	case protocol.NODEOFFLINE:
-		off := message.(*protocol.NodeOffline)
+		off, ok := asMsg[*protocol.NodeOffline](message, "NODEOFFLINE", uuid)
+		if !ok {
+			return
+		}
 		c.nodeOffline(off.UUID)
 
 	case protocol.LISTENRES:
-		slog.Info("listen response", "uuid", uuid, "ok", message.(*protocol.ListenRes).OK)
+		res, ok := asMsg[*protocol.ListenRes](message, "LISTENRES", uuid)
+		if !ok {
+			return
+		}
+		slog.Info("listen response", "uuid", uuid, "ok", res.OK)
 
 	case protocol.CONNECTDONE:
-		slog.Info("connect done", "uuid", uuid, "ok", message.(*protocol.ConnectDone).OK)
+		res, ok := asMsg[*protocol.ConnectDone](message, "CONNECTDONE", uuid)
+		if !ok {
+			return
+		}
+		slog.Info("connect done", "uuid", uuid, "ok", res.OK)
 
 	case protocol.SOCKSREADY:
-		res := message.(*protocol.SocksReady)
+		res, ok := asMsg[*protocol.SocksReady](message, "SOCKSREADY", uuid)
+		if !ok {
+			return
+		}
 		slog.Info("socks ready", "uuid", uuid, "ok", res.OK)
 		c.handleSocksReady(uuid, res.OK == 1)
 
 	case protocol.SOCKSTCPDATA:
-		data := message.(*protocol.SocksTCPData)
+		data, ok := asMsg[*protocol.SocksTCPData](message, "SOCKSTCPDATA", uuid)
+		if !ok {
+			return
+		}
 		c.handleSocksData(uuid, data)
 
 	case protocol.SOCKSTCPACK:
-		ack := message.(*protocol.SocksTCPAck)
+		ack, ok := asMsg[*protocol.SocksTCPAck](message, "SOCKSTCPACK", uuid)
+		if !ok {
+			return
+		}
 		c.handleSocksAck(uuid, ack)
 
 	case protocol.SOCKSTCPFIN:
-		fin := message.(*protocol.SocksTCPFin)
+		fin, ok := asMsg[*protocol.SocksTCPFin](message, "SOCKSTCPFIN", uuid)
+		if !ok {
+			return
+		}
 		c.handleSocksFin(uuid, fin)
 
 	case protocol.FORWARDREADY:
-		slog.Info("forward ready", "uuid", uuid, "ok", message.(*protocol.ForwardReady).OK)
+		res, ok := asMsg[*protocol.ForwardReady](message, "FORWARDREADY", uuid)
+		if !ok {
+			return
+		}
+		slog.Info("forward ready", "uuid", uuid, "ok", res.OK)
 
 	case protocol.BACKWARDREADY:
-		res := message.(*protocol.BackwardReady)
+		res, ok := asMsg[*protocol.BackwardReady](message, "BACKWARDREADY", uuid)
+		if !ok {
+			return
+		}
 		c.handleBackwardReady(uuid, res)
 
 	case protocol.BACKWARDDATA:
-		data := message.(*protocol.BackwardData)
+		data, ok := asMsg[*protocol.BackwardData](message, "BACKWARDDATA", uuid)
+		if !ok {
+			return
+		}
 		c.handleBackwardData(uuid, data)
 
 	case protocol.BACKWARDFIN:
-		fin := message.(*protocol.BackWardFin)
+		fin, ok := asMsg[*protocol.BackWardFin](message, "BACKWARDFIN", uuid)
+		if !ok {
+			return
+		}
 		c.handleBackwardFin(uuid, fin)
 
 	case protocol.FILESTATRES:
 		// upload ack from node (legacy no-op)
 
 	case protocol.FILESTATREQ:
-		// download metadata from node
-		req := message.(*protocol.FileStatReq)
+		req, ok := asMsg[*protocol.FileStatReq](message, "FILESTATREQ", uuid)
+		if !ok {
+			return
+		}
 		c.handleDownloadFileStat(uuid, req)
 
 	case protocol.FILEDATA:
-		data := message.(*protocol.FileData)
+		data, ok := asMsg[*protocol.FileData](message, "FILEDATA", uuid)
+		if !ok {
+			return
+		}
 		c.handleDownloadFileData(uuid, data)
 
 	case protocol.FILEDOWNRES:
-		res := message.(*protocol.FileDownRes)
+		res, ok := asMsg[*protocol.FileDownRes](message, "FILEDOWNRES", uuid)
+		if !ok {
+			return
+		}
 		c.handleFileDownRes(uuid, res)
 
 	case protocol.EXECRES:
-		res := message.(*protocol.ExecRes)
+		res, ok := asMsg[*protocol.ExecRes](message, "EXECRES", uuid)
+		if !ok {
+			return
+		}
 		c.handleExecRes(res)
 
 	case protocol.HEARTBEAT:
@@ -428,6 +517,17 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 	default:
 		slog.Warn("unhandled message type", "type", header.MessageType, "from", uuid)
 	}
+}
+
+// asMsg type-asserts a decoded payload; logs and returns false instead of panicking.
+func asMsg[T any](message interface{}, kind, from string) (T, bool) {
+	var zero T
+	v, ok := message.(T)
+	if !ok {
+		slog.Warn("unexpected payload type", "kind", kind, "from", from, "got", fmt.Sprintf("%T", message))
+		return zero, false
+	}
+	return v, true
 }
 
 func (c *Controller) handleChildUUIDReq(parentUUID string, req *protocol.ChildUUIDReq) {
@@ -641,6 +741,3 @@ func (c *Controller) findBackwardListener(nodeUUID string, seq uint64) *Backward
 	return nil
 }
 
-// unused avoids unused import errors.
-var _ = tls.Config{}
-var _ = time.Now

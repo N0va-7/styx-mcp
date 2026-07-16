@@ -48,4 +48,15 @@ SECRET="${STYX_SECRET}"
 LISTEN="${STYX_LISTEN:-127.0.0.1:19137}"
 LOG="${STYX_LOG:-/tmp/styx-mcp-controller.log}"
 
+# Early port-busy hint (controller still fails hard if bind races after this check).
+if command -v lsof >/dev/null 2>&1; then
+    PORT="${LISTEN##*:}"
+    if [[ -n "${PORT}" ]] && lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "styx-mcp: listen address ${LISTEN} appears busy (port ${PORT} already in use)." >&2
+        echo "  Free the port or set STYX_LISTEN to another host:port." >&2
+        lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null | head -5 >&2 || true
+        exit 1
+    fi
+fi
+
 exec "${CONTROLLER}" -s "${SECRET}" -l "${LISTEN}" 2>>"${LOG}"
