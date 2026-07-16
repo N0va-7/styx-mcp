@@ -198,8 +198,7 @@ func getNodeID(args map[string]interface{}) (int, error) {
 }
 
 func (s *Server) handleListNodes(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.Calculate}
-	<-s.controller.Topology.ResultChan
+	s.controller.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
 	entries := s.controller.ListNodes()
 	nodes := make([]map[string]interface{}, 0, len(entries))
@@ -263,18 +262,16 @@ func (s *Server) handleAddNodeMemo(ctx context.Context, request mcp.CallToolRequ
 		return s.failure("memo must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{
+	s.controller.Topology.Do(&topology.Task{
 		Mode: topology.UpdateMemo,
 		UUID: res.UUID,
 		Memo: memo,
-	}
-	<-s.controller.Topology.ResultChan
+	})
 
 	header := &protocol.Header{
 		Version:     1,
@@ -301,18 +298,16 @@ func (s *Server) handleDeleteNodeMemo(ctx context.Context, request mcp.CallToolR
 		return s.failure(err.Error()), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{
+	s.controller.Topology.Do(&topology.Task{
 		Mode: topology.UpdateMemo,
 		UUID: res.UUID,
 		Memo: "",
-	}
-	<-s.controller.Topology.ResultChan
+	})
 
 	header := &protocol.Header{
 		Version:     1,
@@ -344,8 +339,7 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 		return s.failure("address must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -394,8 +388,7 @@ func (s *Server) handleConnectNode(ctx context.Context, request mcp.CallToolRequ
 		return s.failure("address must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -443,8 +436,7 @@ func (s *Server) handleStartSocks(ctx context.Context, request mcp.CallToolReque
 		return s.failure("address must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -488,8 +480,7 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 		return s.failure("target_address must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -545,8 +536,7 @@ func (s *Server) handleStartBackward(ctx context.Context, request mcp.CallToolRe
 		return s.failure("target_address must be a string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -599,8 +589,7 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 		return s.failure(fmt.Sprintf("local file too large: %d bytes (max %d)", len(data), maxUpload)), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -675,8 +664,7 @@ func (s *Server) handleDownloadFile(ctx context.Context, request mcp.CallToolReq
 		return s.failure("local_path must be a non-empty string"), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -726,8 +714,7 @@ func (s *Server) handleExec(ctx context.Context, request mcp.CallToolRequest) (*
 		workdir = v
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
@@ -776,8 +763,7 @@ func (s *Server) handleShutdownNode(ctx context.Context, request mcp.CallToolReq
 		return s.failure(err.Error()), nil
 	}
 
-	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}
-	res := <-s.controller.Topology.ResultChan
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
 	if res.UUID == "" {
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}

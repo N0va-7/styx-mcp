@@ -1,6 +1,8 @@
 package topology
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"styx-mcp/pkg/protocol"
@@ -10,27 +12,21 @@ func TestListAllSkipsSparseIDs(t *testing.T) {
 	topo := NewTopology()
 	go topo.Run()
 
-	// Add three nodes under admin.
-	for i, uuid := range []string{"nodeaaaaaa", "nodebbbbbb", "nodecccccc"} {
-		_ = i
-		topo.TaskChan <- &Task{
+	for _, uuid := range []string{"nodeaaaaaa", "nodebbbbbb", "nodecccccc"} {
+		res := topo.Do(&Task{
 			Mode:       AddNode,
-			Target:     NewNode(uuid, "10.0.0."+uuid[4:5]),
+			Target:     NewNode(uuid, "10.0.0.1"),
 			ParentUUID: protocol.ControllerUUID,
 			IsFirst:    true,
-		}
-		res := <-topo.ResultChan
+		})
 		if res.IDNum < 0 {
 			t.Fatalf("add node failed for %s", uuid)
 		}
 	}
 
-	// Delete middle ID (1).
-	topo.TaskChan <- &Task{Mode: DelNode, UUID: "nodebbbbbb"}
-	<-topo.ResultChan
+	topo.Do(&Task{Mode: DelNode, UUID: "nodebbbbbb"})
 
-	topo.TaskChan <- &Task{Mode: ListAll}
-	res := <-topo.ResultChan
+	res := topo.Do(&Task{Mode: ListAll})
 	if len(res.Nodes) != 2 {
 		t.Fatalf("ListAll returned %d nodes, want 2", len(res.Nodes))
 	}
@@ -41,10 +37,55 @@ func TestListAllSkipsSparseIDs(t *testing.T) {
 		t.Fatalf("second entry = %+v", res.Nodes[1])
 	}
 
-	// Legacy GetUUID(1) is empty (sparse), but ListAll still sees ID 2.
-	topo.TaskChan <- &Task{Mode: GetUUID, UUIDNum: 1}
-	miss := <-topo.ResultChan
+	miss := topo.Do(&Task{Mode: GetUUID, UUIDNum: 1})
 	if miss.UUID != "" {
 		t.Fatalf("expected gap at id 1, got %q", miss.UUID)
 	}
+}
+
+func TestDoCorrelatesConcurrentResults(t *testing.T) {
+	topo := NewTopology()
+	go topo.Run()
+
+	const n = 32
+	for i := 0; i < n; i++ {
+		uuid := formatID(i)
+		res := topo.Do(&Task{
+			Mode:    AddNode,
+			Target:  NewNode(uuid, "10.0.0.1"),
+			IsFirst: true,
+		})
+		if res.IDNum != i {
+			t.Fatalf("add %d: id=%d", i, res.IDNum)
+		}
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, n*2)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			want := formatID(id)
+			res := topo.Do(&Task{Mode: GetUUID, UUIDNum: id})
+			if res.UUID != want {
+				errs <- fmt.Sprintf("GetUUID(%d)=%q want %q", id, res.UUID, want)
+				return
+			}
+			nodeRes := topo.Do(&Task{Mode: GetNode, UUID: want})
+			if !nodeRes.IsExist || nodeRes.Node == nil || nodeRes.Node.UUID != want {
+				errs <- fmt.Sprintf("GetNode(%s) mismatch", want)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+}
+
+func formatID(i int) string {
+	// Exactly 10 chars for wire-style UUIDs.
+	return fmt.Sprintf("n%08x", i)
 }

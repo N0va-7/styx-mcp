@@ -43,23 +43,25 @@ type Node struct {
 // NewNode creates a topology node.
 func NewNode(uuid, ip string) *Node {
 	return &Node{
-		UUID:   uuid,
+		UUID:      uuid,
 		CurrentIP: ip,
 	}
 }
 
 // Topology maintains the tree of online nodes.
+// All mutations/queries go through Do (or TaskChan+Reply) so concurrent
+// callers never share a single ResultChan.
 type Topology struct {
 	currentIDNum int
 	nodes        map[int]*Node
 	routes       map[string]string
 	history      map[string]int
 
-	TaskChan   chan *Task
-	ResultChan chan *Result
+	TaskChan chan *Task
 }
 
 // Task is a request sent to the topology manager.
+// Reply is filled by Do() when nil; each request gets its own result channel.
 type Task struct {
 	Mode       int
 	UUID       string
@@ -70,6 +72,7 @@ type Task struct {
 	UserName   string
 	Memo       string
 	IsFirst    bool
+	Reply      chan *Result
 }
 
 // NodeEntry pairs a stable numeric ID with a node snapshot.
@@ -93,12 +96,28 @@ type Result struct {
 // NewTopology creates a new topology manager.
 func NewTopology() *Topology {
 	return &Topology{
-		nodes:      make(map[int]*Node),
-		routes:     make(map[string]string),
-		history:    make(map[string]int),
-		TaskChan:   make(chan *Task),
-		ResultChan: make(chan *Result),
+		nodes:    make(map[int]*Node),
+		routes:   make(map[string]string),
+		history:  make(map[string]int),
+		TaskChan: make(chan *Task),
 	}
+}
+
+// Do submits a task and waits for its correlated result (safe under concurrency).
+func (t *Topology) Do(task *Task) *Result {
+	if task.Reply == nil {
+		task.Reply = make(chan *Result, 1)
+	}
+	t.TaskChan <- task
+	return <-task.Reply
+}
+
+func (t *Topology) reply(task *Task, res *Result) {
+	if task.Reply == nil {
+		// Defensive: should not happen if Do() is used.
+		return
+	}
+	task.Reply <- res
 }
 
 // Run starts the topology event loop.
@@ -114,7 +133,7 @@ func (t *Topology) Run() {
 		case CheckNode:
 			t.checkNode(task)
 		case Calculate:
-			t.calculate()
+			t.calculate(task)
 		case GetRoute:
 			t.getRoute(task)
 		case GetFirstHop:
@@ -128,15 +147,17 @@ func (t *Topology) Run() {
 		case UpdateDetail:
 			t.updateDetail(task)
 		case ShowDetail:
-			t.showDetail()
+			t.showDetail(task)
 		case ShowTopo:
-			t.showTopo()
+			t.showTopo(task)
 		case UpdateMemo:
 			t.updateMemo(task)
 		case GetParent:
 			t.getParent(task)
 		case ListAll:
-			t.listAll()
+			t.listAll(task)
+		default:
+			t.reply(task, &Result{})
 		}
 	}
 }
@@ -161,32 +182,30 @@ func (t *Topology) num2ID(num int) (string, bool) {
 func (t *Topology) getUUID(task *Task) {
 	uuid, ok := t.num2ID(task.UUIDNum)
 	if !ok {
-		t.ResultChan <- &Result{UUID: ""}
+		t.reply(task, &Result{UUID: ""})
 		return
 	}
-	t.ResultChan <- &Result{UUID: uuid}
+	t.reply(task, &Result{UUID: uuid})
 }
 
 func (t *Topology) getUUIDNum(task *Task) {
-	t.ResultChan <- &Result{IDNum: t.id2Num(task.UUID)}
+	t.reply(task, &Result{IDNum: t.id2Num(task.UUID)})
 }
 
 func (t *Topology) getNode(task *Task) {
 	num := t.id2Num(task.UUID)
 	if num < 0 {
-		t.ResultChan <- &Result{IsExist: false}
+		t.reply(task, &Result{IsExist: false})
 		return
 	}
 	node := t.nodes[num]
-	copy := *node
-	copy.ChildrenUUID = append([]string{}, node.ChildrenUUID...)
-	t.ResultChan <- &Result{IsExist: true, Node: &copy}
+	cp := *node
+	cp.ChildrenUUID = append([]string{}, node.ChildrenUUID...)
+	t.reply(task, &Result{IsExist: true, Node: &cp})
 }
 
 // listAll returns every online node, sorted by numeric ID.
-// Unlike GetUUID/GetNode loops that stop at the first missing ID, this
-// correctly handles sparse IDs after DelNode.
-func (t *Topology) listAll() {
+func (t *Topology) listAll(task *Task) {
 	ids := make([]int, 0, len(t.nodes))
 	for id := range t.nodes {
 		ids = append(ids, id)
@@ -200,12 +219,12 @@ func (t *Topology) listAll() {
 		cp.ChildrenUUID = append([]string{}, node.ChildrenUUID...)
 		entries = append(entries, NodeEntry{ID: id, Node: &cp})
 	}
-	t.ResultChan <- &Result{Nodes: entries}
+	t.reply(task, &Result{Nodes: entries})
 }
 
 func (t *Topology) checkNode(task *Task) {
 	_, ok := t.nodes[task.UUIDNum]
-	t.ResultChan <- &Result{IsExist: ok}
+	t.reply(task, &Result{IsExist: ok})
 }
 
 func (t *Topology) addNode(task *Task) {
@@ -215,7 +234,7 @@ func (t *Topology) addNode(task *Task) {
 		task.Target.ParentUUID = task.ParentUUID
 		parentNum := t.id2Num(task.ParentUUID)
 		if parentNum < 0 {
-			t.ResultChan <- &Result{IDNum: -1}
+			t.reply(task, &Result{IDNum: -1})
 			return
 		}
 		t.nodes[parentNum].ChildrenUUID = append(t.nodes[parentNum].ChildrenUUID, task.Target.UUID)
@@ -223,11 +242,11 @@ func (t *Topology) addNode(task *Task) {
 
 	t.nodes[t.currentIDNum] = task.Target
 	t.history[task.Target.UUID] = t.currentIDNum
-	t.ResultChan <- &Result{IDNum: t.currentIDNum}
+	t.reply(task, &Result{IDNum: t.currentIDNum})
 	t.currentIDNum++
 }
 
-func (t *Topology) calculate() {
+func (t *Topology) calculate(task *Task) {
 	newRoutes := make(map[string]string)
 
 	for num := range t.nodes {
@@ -256,23 +275,23 @@ func (t *Topology) calculate() {
 	}
 
 	t.routes = newRoutes
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
 
 func (t *Topology) getRoute(task *Task) {
-	t.ResultChan <- &Result{Route: t.routes[task.UUID]}
+	t.reply(task, &Result{Route: t.routes[task.UUID]})
 }
 
 func (t *Topology) updateDetail(task *Task) {
 	num := t.id2Num(task.UUID)
 	if num < 0 {
-		t.ResultChan <- &Result{}
+		t.reply(task, &Result{})
 		return
 	}
 	t.nodes[num].CurrentUser = task.UserName
 	t.nodes[num].CurrentHostname = task.HostName
 	t.nodes[num].Memo = task.Memo
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
 
 func (t *Topology) updateMemo(task *Task) {
@@ -280,66 +299,65 @@ func (t *Topology) updateMemo(task *Task) {
 	if num >= 0 {
 		t.nodes[num].Memo = task.Memo
 	}
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
 
 func (t *Topology) getParent(task *Task) {
 	num := t.id2Num(task.UUID)
 	if num < 0 {
-		t.ResultChan <- &Result{UUID: ""}
+		t.reply(task, &Result{UUID: ""})
 		return
 	}
-	t.ResultChan <- &Result{UUID: t.nodes[num].ParentUUID}
+	t.reply(task, &Result{UUID: t.nodes[num].ParentUUID})
 }
 
 func (t *Topology) getFirstHop(task *Task) {
 	num := t.id2Num(task.UUID)
 	if num < 0 {
-		t.ResultChan <- &Result{}
+		t.reply(task, &Result{})
 		return
 	}
 
-	// Walk up to the node directly connected to admin.
 	var routeParts []string
 	current := num
 	for {
 		node := t.nodes[current]
 		if node.ParentUUID == protocol.ControllerUUID {
-			t.ResultChan <- &Result{UUID: node.UUID, Route: strings.Join(routeParts, ":")}
+			t.reply(task, &Result{UUID: node.UUID, Route: strings.Join(routeParts, ":")})
 			return
 		}
 		routeParts = append([]string{node.UUID}, routeParts...)
 		parentNum := t.id2Num(node.ParentUUID)
 		if parentNum < 0 {
-			t.ResultChan <- &Result{}
+			t.reply(task, &Result{})
 			return
 		}
 		current = parentNum
 	}
 }
 
-func (t *Topology) showDetail() {
+func (t *Topology) showDetail(task *Task) {
 	for num, node := range t.nodes {
 		fmt.Printf("Node[%d] -> IP: %s  Hostname: %s  User: %s\nMemo: %s\n",
 			num, node.CurrentIP, node.CurrentHostname, node.CurrentUser, node.Memo)
 	}
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
 
-func (t *Topology) showTopo() {
+func (t *Topology) showTopo(task *Task) {
 	for num, node := range t.nodes {
 		fmt.Printf("Node[%d]'s children ->\n", num)
 		for _, child := range node.ChildrenUUID {
 			fmt.Printf("Node[%d]\n", t.id2Num(child))
 		}
 	}
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
 
 func (t *Topology) delNode(task *Task) {
 	idNum := t.id2Num(task.UUID)
 	if idNum < 0 {
-		t.ResultChan <- &Result{AllNodes: []string{}}
+		t.reply(task, &Result{AllNodes: []string{}})
 		return
 	}
 
@@ -371,7 +389,7 @@ func (t *Topology) delNode(task *Task) {
 		delete(t.nodes, num)
 	}
 
-	t.ResultChan <- &Result{AllNodes: readyUUID}
+	t.reply(task, &Result{AllNodes: readyUUID})
 }
 
 func (t *Topology) findChildren(ready *[]int, idNum int) {
@@ -405,6 +423,5 @@ func (t *Topology) reonlineNode(task *Task) {
 	}
 
 	t.nodes[idNum] = task.Target
-	t.ResultChan <- &Result{}
+	t.reply(task, &Result{})
 }
-

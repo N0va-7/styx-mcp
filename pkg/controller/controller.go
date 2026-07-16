@@ -333,25 +333,22 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 		parentUUID = protocol.ControllerUUID
 	}
 
-	c.Topology.TaskChan <- &topology.Task{
+	c.Topology.Do(&topology.Task{
 		Mode:       topology.AddNode,
 		Target:     topology.NewNode(uuid, conn.RemoteAddr().String()),
 		ParentUUID: parentUUID,
 		IsFirst:    isFirst,
-	}
-	<-c.Topology.ResultChan
+	})
 
-	c.Topology.TaskChan <- &topology.Task{
+	c.Topology.Do(&topology.Task{
 		Mode:     topology.UpdateDetail,
 		UUID:     uuid,
 		UserName: info.Username,
 		HostName: info.Hostname,
 		Memo:     info.Memo,
-	}
-	<-c.Topology.ResultChan
+	})
 
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.Calculate}
-	<-c.Topology.ResultChan
+	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
 	slog.Info("node online", "uuid", uuid, "ip", conn.RemoteAddr().String())
 
@@ -385,14 +382,13 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		if !ok {
 			return
 		}
-		c.Topology.TaskChan <- &topology.Task{
+		c.Topology.Do(&topology.Task{
 			Mode:     topology.UpdateDetail,
 			UUID:     info.UUID,
 			UserName: info.Username,
 			HostName: info.Hostname,
 			Memo:     info.Memo,
-		}
-		<-c.Topology.ResultChan
+		})
 
 	case protocol.CHILDUUIDREQ:
 		req, ok := asMsg[*protocol.ChildUUIDReq](message, "CHILDUUIDREQ", uuid)
@@ -551,15 +547,13 @@ func (c *Controller) handleChildUUIDReq(parentUUID string, req *protocol.ChildUU
 	}
 
 	// Register child in topology under parent.
-	c.Topology.TaskChan <- &topology.Task{
+	c.Topology.Do(&topology.Task{
 		Mode:       topology.AddNode,
 		Target:     topology.NewNode(childUUID, req.IP),
 		ParentUUID: parentUUID,
-	}
-	<-c.Topology.ResultChan
+	})
 
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.Calculate}
-	<-c.Topology.ResultChan
+	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
 	slog.Info("child uuid assigned", "parent", parentUUID, "child", childUUID)
 }
@@ -572,11 +566,9 @@ func (c *Controller) nodeOffline(uuid string) {
 	}
 	c.connsMu.Unlock()
 
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.DelNode, UUID: uuid}
-	res := <-c.Topology.ResultChan
+	res := c.Topology.Do(&topology.Task{Mode: topology.DelNode, UUID: uuid})
 
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.Calculate}
-	<-c.Topology.ResultChan
+	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
 	slog.Info("node offline", "uuid", uuid, "affected", res.AllNodes)
 }
@@ -612,8 +604,7 @@ func (c *Controller) SendToNode(uuid string, header *protocol.Header, payload in
 // resolveRoute returns the directly-connected UUID to send through and the
 // remaining route segment to reach the target UUID.
 func (c *Controller) resolveRoute(uuid string) (string, string, error) {
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.GetFirstHop, UUID: uuid}
-	res := <-c.Topology.ResultChan
+	res := c.Topology.Do(&topology.Task{Mode: topology.GetFirstHop, UUID: uuid})
 
 	if res.UUID == "" {
 		return "", "", fmt.Errorf("node not found: %s", uuid)
@@ -624,14 +615,12 @@ func (c *Controller) resolveRoute(uuid string) (string, string, error) {
 
 // GetNodeInfo returns node details for MCP tools.
 func (c *Controller) GetNodeInfo(uuidNum int) (*topology.Node, bool) {
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: uuidNum}
-	res := <-c.Topology.ResultChan
+	res := c.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: uuidNum})
 	if res.UUID == "" {
 		return nil, false
 	}
 
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.GetNode, UUID: res.UUID}
-	nodeRes := <-c.Topology.ResultChan
+	nodeRes := c.Topology.Do(&topology.Task{Mode: topology.GetNode, UUID: res.UUID})
 	if !nodeRes.IsExist || nodeRes.Node == nil {
 		return nil, false
 	}
@@ -641,8 +630,7 @@ func (c *Controller) GetNodeInfo(uuidNum int) (*topology.Node, bool) {
 
 // ListNodes returns all online nodes with their numeric IDs (sparse-ID safe).
 func (c *Controller) ListNodes() []topology.NodeEntry {
-	c.Topology.TaskChan <- &topology.Task{Mode: topology.ListAll}
-	res := <-c.Topology.ResultChan
+	res := c.Topology.Do(&topology.Task{Mode: topology.ListAll})
 	if res.Nodes == nil {
 		return nil
 	}

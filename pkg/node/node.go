@@ -379,11 +379,9 @@ func (n *Node) handleUpstream() {
 				slog.Warn("downward payload is not []byte", "type", header.MessageType)
 				continue
 			}
-			select {
-			case n.childrenMsg <- &ChildrenMessage{Header: header, Payload: payload}:
-			default:
-				slog.Warn("children message queue full", "uuid", nexthop)
-			}
+			// Block (backpressure) instead of dropping when the queue is full —
+			// silent drops break multi-hop SOCKS under load.
+			n.childrenMsg <- &ChildrenMessage{Header: header, Payload: payload}
 			continue
 		}
 
