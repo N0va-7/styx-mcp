@@ -1,113 +1,119 @@
 # styx-mcp — project agent rules
 
-This repo is an **MCP-native multi-hop proxy** (controller + agent). Multi-hop ideas are inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway); wire identity, crypto, and the control plane are **styx-mcp’s own**. Keep attribution links in docs; do not reintroduce foreign handshake strings or dead “compat” stubs without a reason.
+MCP-native multi-hop proxy (controller + agent). Multi-hop ideas inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway); identity, crypto, and control plane are **styx-mcp’s own**. Keep attribution links; don’t reintroduce legacy handshake strings or dead compat stubs without reason.
 
 **Authorized use only** (labs, CTF/exam ranges, RoE-covered work).
 
 ---
 
-## Fix / change workflow (required)
+## Core principle: test what you changed
 
-When implementing features or bugfixes, follow this loop. Do not skip steps.
+**开发/修复哪块能力，就验证哪块能力** — 包括正常路径和边界/失败路径。  
+不要用「固定全链路清单」替代针对性验证；也不要只跑无关的通用烟测就声称修完了。
+
+| 你改了什么 | 至少应证明什么 |
+|------------|----------------|
+| 拓扑 / `list_nodes` / memo / offline | 上线、列表、详情、memo 增删、**下线后稀疏 ID**、并发查询不串结果 |
+| listen / bind / wrapper 启动 | 成功监听；**端口占用/无权限时进程失败且错误可读** |
+| 握手 / 密钥 / 协议 framing | **新旧不兼容时行为明确**；同版本 agent 能上线；畸形包不 panic |
+| SOCKS / flow control | 流建立、数据往返、FIN/断流；必要时窗口阻塞与 ACK |
+| forward / backward | 监听侧与 dial 侧正确；多会话不串（seq / node） |
+| exec / 文件上下传 | 成功、超时、截断、路径非法/过大拒绝 |
+| 纯文档 / AGENTS / 注释 | 无需靶机；确认无代码行为变化即可 |
+
+**深度与改动面成正比：** 小修复可以单测 + 窄场景；动数据面/控制面则要实网或等价集成；边界（空、并发、失败、超限）至少覆盖你引入或触碰的那几类。
+
+全链路跳板（入口 RCE → agent → SOCKS → 内网服务）是**可选的回归手段**，适合大改发布前或用户要求「靶机验收」时用，**不是每次改拓扑都只拿 SOCKS 冒充拓扑测过**。
+
+---
+
+## Workflow
 
 ```text
-1. Scope     — fix only what was asked; no drive-by refactors
-2. Implement — minimal, correct change; fail visibly on hard errors
-3. Unit      — go test ./...  (and new tests when logic is testable)
-4. Real e2e  — if the change touches proxy/control plane/handshake/listen, run the target lab path below
-5. Commit    — only after tests that apply have passed
-6. Push      — only if the user explicitly asks
+1. Scope      — 只做要求的事；发现旁路问题先记下来，不擅自膨胀
+2. Implement  — 最小正确改动；硬错误要可见（别静默假健康）
+3. Verify     — 针对本改动的功能测试 + 边界测试（见上表）
+4. Suite      — go test ./...（能加单测的逻辑就加）
+5. Commit     — 验证通过再提交；失败继续修
+6. Push       — 仅当用户明确要求
 ```
 
 ### Scope
 
 | Do | Don't |
 |----|--------|
-| Touch files related to the defect/feature | Unrelated renames, drive-by cleanup |
-| One logical theme per commit (or a tight P0 set) | Mix P0 + P2 + docs rewrite in one dump |
-| Call out wire/compat breaks in the commit message | Silently break agent↔controller compatibility |
+| 与缺陷/功能相关的文件 | 顺手大重构、无关美化 |
+| 一个主题一个 commit（或紧密相关的一小批） | 把无关 P0/P2/文档搅在一起 |
+| wire/兼容破坏写进 commit message | 默默弄坏 controller↔agent 配对 |
 
-If you discover a larger issue while fixing: record it for the user; **do not expand the PR** unless it blocks verification.
+### Quality bar
 
-### Code quality bar
-
-- Prefer simple control flow over clever abstraction.
-- **Hard failures must be visible**: e.g. controller listen bind failure must not leave MCP “healthy” with an empty topology — exit non-zero or surface a clear error to the client.
-- **Never panic on peer/MCP input**: type-assert with comma-ok; log and skip/fail the request.
-- Wrap errors with context (`fmt.Errorf("…: %w", err)`).
-- Secrets: never commit `.grok/styx.secret`, real `STYX_SECRET`, or lab keys. Prefer env / gitignored local config (see `.grok/config.toml.example`).
+- 简单清晰优先于炫技。
+- **失败可见**：例如 listen 绑定失败不得让 MCP 空拓扑却显示正常 — 非 0 退出或明确报错。
+- **对端/MCP 输入不 panic**：类型断言 comma-ok；记日志并跳过/返回错误。
+- 错误带上下文：`fmt.Errorf("…: %w", err)`。
+- 密钥不入库：`.grok/styx.secret`、真实 `STYX_SECRET`；模板见 `.grok/config.toml.example`。
 
 ### Wire / versioning
 
-- Controller and agent must be built from the **same commit** when handshake, crypto, or framing changes.
-- Identity constants live in `pkg/protocol` (`ControllerUUID`, `JoinUUID`, `HelloFromAgent`, `HelloFromController`, …). Do not reintroduce legacy Stowaway greetings/UUIDs.
-- Message type numeric IDs are append-only when possible (keep existing wire IDs stable).
+- 握手、加解密、framing 变更时，controller 与 agent **同 commit 构建**。
+- 身份常量在 `pkg/protocol`（`ControllerUUID`、`JoinUUID`、`HelloFromAgent`、`HelloFromController` 等）。
+- 消息类型数值尽量 **append-only**，保持既有 wire ID 稳定。
 
 ---
 
-## Testing
+## How to verify (guidance, not a rigid script)
 
-### Always
+### Always (code changes)
 
 ```bash
 go test ./...
-go build ./...   # or make build / make build-all when shipping agents
+go build ./...   # shipping agents: make build / make build-all
 ```
 
-### Real-scenario e2e (when required)
+### Match tests to the change
 
-Run this path when the change affects **listen, preauth, handshake, routing, SOCKS, MCP tools, or packaging**:
+- **Prefer automated tests** for pure logic (topology correlation, path sanitize, length limits, listen error text).
+- **Use live MCP + real agent** when the change only shows up across process/network boundaries (memo sync, offline, SOCKS exit node).
+- **Boundary ideas** (pick what applies): empty/missing id, concurrent calls, disconnect mid-op, port in use, oversize payload, wrong secret, path traversal, timeout.
 
-1. Rebuild controller (host OS) + agent (`linux/amd64` for typical lab targets).
-2. Ensure **one** controller owns the agent port (default `19137`); free the port if another MCP instance holds it.
-3. Foothold on authorized target (e.g. lab entry) → deploy **new** agent → connect with shared secret.
-4. MCP: `list_nodes` shows the node.
-5. MCP: `start_socks` on controller (`127.0.0.1:<port>`).
-6. Prove pivot: **direct** to internal service fails or is unreachable from the attacker host; **via SOCKS** reaches the intended internal target (e.g. WebLogic console).
+### Optional full pivot regression
 
-If e2e fails: fix and re-run; **do not commit**.
+When doing a broad release check or the user asks for lab e2e:
 
-Unit-only is enough for pure refactors that cannot affect the data plane (e.g. comment/docs-only), but prefer e2e when unsure.
-
-### Smoke commands (examples)
-
-```bash
-# After start_socks(node_id, "127.0.0.1:10801")
-curl -sS -m 3 -I http://<internal-host>:<port>/          # often timeout from attacker
-curl -sS -m 15 --socks5-hostname 127.0.0.1:10801 -I \
-  http://<internal-host>:<port>/console/                 # expect service response
-```
+1. One controller on the agent port; rebuild matching agent.
+2. Authorized foothold → agent online → `list_nodes`.
+3. Exercise the **features you care about** (topo / socks / exec / …).
+4. For SOCKS: show attacker cannot reach internal host directly, but can via proxy.
 
 ---
 
-## Git commits
+## Git
 
-- Commit only with a clean verification story for the change.
-- Message style (match repo history): short subject, imperative; body explains **why** if non-obvious.
-  - Examples: `fix: …`, `feat: …`, `refactor: …`
-- Do not commit: `release/`, secrets, local `.grok/config.toml` (example file is OK).
-- Do not `git push` or amend published history unless the user asks.
+- 有与本改动对应的验证结论再 commit。
+- 风格：`fix:` / `feat:` / `refactor:` / `docs:`；主体写 **why**。
+- 勿提交：`release/`、密钥、本地 `.grok/config.toml`。
+- 勿 `git push` / 改写已发布历史，除非用户要求。
 
 ---
 
-## Layout (quick)
+## Layout
 
 | Path | Role |
 |------|------|
-| `cmd/controller` | Controller + MCP stdio entry |
-| `cmd/agent` | Agent entry |
-| `pkg/mcp` | MCP tool surface |
+| `cmd/controller` | Controller + MCP stdio |
+| `cmd/agent` | Agent |
+| `pkg/mcp` | MCP tools |
 | `pkg/controller` | Control plane, SOCKS/backward |
 | `pkg/node` | Agent handlers |
-| `pkg/protocol` | Wire protocol + identity |
-| `scripts/styx-mcp-wrapper.sh` | Cursor/Grok MCP launcher |
-| `.grok/config.toml.example` | Project MCP template |
+| `pkg/protocol` | Wire + identity |
+| `pkg/topology` | Node tree (use `Topology.Do`) |
+| `scripts/styx-mcp-wrapper.sh` | MCP launcher |
+| `.grok/config.toml.example` | MCP template |
 
----
+## Ops
 
-## Ops notes for agents
-
-- Prefer **styx-mcp MCP tools** for tunnels (`start_socks` / `start_backward` / `start_forward`); do not invent chisel/frp unless asked or MCP is down.
-- `start_socks`: SOCKS listens on **controller**; traffic exits via `node_id`.
-- `start_forward`: listens on **agent**; not a local SOCKS substitute.
-- Multiple MCP clients (Cursor + Grok) must not fight over the same listen port — one controller instance at a time.
+- 隧道优先 **styx-mcp MCP**（`start_socks` / `start_backward` / `start_forward`），除非用户指定或 MCP 不可用。
+- `start_socks`：在 **controller** 听；流量从 `node_id` 出。
+- `start_forward`：在 **agent** 听；不是本机 SOCKS 替代品。
+- 同时只应有一个 controller 占用 agent 监听端口（Cursor/Grok 勿抢同一端口）。
