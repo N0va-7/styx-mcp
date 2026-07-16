@@ -1,0 +1,11 @@
+# Copy to config.toml (gitignored) and adjust paths/secret.
+# Secret resolution order in the wrapper:
+#   1. env STYX_SECRET
+#   2. .grok/styx.secret (gitignored)
+
+[mcp_servers.styx-mcp]
+command = "/absolute/path/to/styx-mcp/scripts/styx-mcp-wrapper.sh"
+env = { STYX_LISTEN = "127.0.0.1:19137", STYX_LOG = "/tmp/styx-mcp-controller.log" }
+# For remote agents: STYX_LISTEN = "0.0.0.0:19137"
+enabled = true
+startup_timeout_sec = 45

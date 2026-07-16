@@ -9,8 +9,12 @@ import (
 	"styx-mcp/pkg/protocol"
 )
 
-// handleForward starts a TCP port forward on this node.
+// handleForward starts a TCP port forward without blocking the upstream loop.
 func (n *Node) handleForward(req *protocol.ForwardStart) {
+	go n.doForward(req)
+}
+
+func (n *Node) doForward(req *protocol.ForwardStart) {
 	listenAddr, _, err := utils.CheckIPPort(req.ListenAddr)
 	if err != nil {
 		slog.Error("invalid forward listen address", "error", err)

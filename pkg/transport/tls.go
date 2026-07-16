@@ -18,11 +18,12 @@ func WrapTLSServerConn(conn net.Conn, config *tls.Config) net.Conn {
 }
 
 // NewClientTLSConfig returns a TLS config for client connections.
-func NewClientTLSConfig(domain string) (*tls.Config, error) {
-	return crypto.NewClientTLSConfig(domain)
+// secret and domain must match the peer (domain may be empty).
+func NewClientTLSConfig(secret, domain string) (*tls.Config, error) {
+	return crypto.NewClientTLSConfig(secret, domain)
 }
 
 // NewServerTLSConfig returns a TLS config for server/listener connections.
-func NewServerTLSConfig() (*tls.Config, error) {
-	return crypto.NewServerTLSConfig()
+func NewServerTLSConfig(secret, domain string) (*tls.Config, error) {
+	return crypto.NewServerTLSConfig(secret, domain)
 }

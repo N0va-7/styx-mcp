@@ -2,9 +2,10 @@
 # Parameterized stdio MCP wrapper for styx-mcp controller.
 # Usage: ./styx-mcp-wrapper.sh
 # Environment:
-#   STYX_SECRET   - shared secret for agent authentication (default: secret)
-#   STYX_LISTEN   - controller listen address for agents (default: 0.0.0.0:19137)
-#   STYX_LOG      - stderr log path (default: /tmp/styx-mcp-controller.log)
+#   STYX_SECRET   - shared secret for agent authentication (required; no weak default)
+#   STYX_LISTEN   - controller listen address for agents (default: 127.0.0.1:19137)
+#   STYX_LOG      - controller stderr log path (default: /tmp/styx-mcp-controller.log)
+#   STYX_MCP_LOG  - optional path to log raw MCP stdio (off by default; may contain secrets)
 #   STYX_BIN_DIR  - override the directory containing built binaries
 
 set -euo pipefail
@@ -30,8 +31,21 @@ if [[ ! -x "${CONTROLLER}" ]]; then
     exit 1
 fi
 
-SECRET="${STYX_SECRET:-secret}"
-LISTEN="${STYX_LISTEN:-0.0.0.0:19137}"
+# Prefer env; fall back to repo-local lab secret (gitignored .grok/styx.secret).
+if [[ -z "${STYX_SECRET:-}" && -f "${PROJECT_ROOT}/.grok/styx.secret" ]]; then
+    STYX_SECRET="$(tr -d '[:space:]' < "${PROJECT_ROOT}/.grok/styx.secret")"
+fi
+
+if [[ -z "${STYX_SECRET:-}" ]]; then
+    echo "STYX_SECRET is required (do not use a weak default)." >&2
+    echo "  export STYX_SECRET=\"\$(openssl rand -hex 16)\"" >&2
+    echo "  # or write it to ${PROJECT_ROOT}/.grok/styx.secret (gitignored)" >&2
+    exit 1
+fi
+
+SECRET="${STYX_SECRET}"
+# Default to loopback; set STYX_LISTEN=0.0.0.0:19137 only when agents are remote.
+LISTEN="${STYX_LISTEN:-127.0.0.1:19137}"
 LOG="${STYX_LOG:-/tmp/styx-mcp-controller.log}"
 
 exec "${CONTROLLER}" -s "${SECRET}" -l "${LISTEN}" 2>>"${LOG}"

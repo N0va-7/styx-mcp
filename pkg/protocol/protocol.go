@@ -63,6 +63,12 @@ const (
 	ADMIN_UUID = "IAMADMINXD"
 	TEMP_UUID  = "IAMNEWHERE"
 	TEMP_ROUTE = "THEREISNOROUTE"
+
+	// MaxRouteLen is the maximum accepted route field length (bytes).
+	MaxRouteLen = 4096
+	// MaxDataLen is the maximum accepted encrypted payload length (bytes).
+	// Large enough for single-slice file transfer (32 MiB) plus framing overhead.
+	MaxDataLen = 36 << 20 // 36 MiB
 )
 
 // Proto is the transport negotiation interface.
@@ -419,7 +425,7 @@ func NewDownProto(param *NegParam) Proto {
 
 // NewUpMsg creates an upstream message encoder/decoder.
 func NewUpMsg(conn net.Conn, secret, uuid string) Message {
-	key := crypto.KeyPadding([]byte(secret))
+	key := crypto.DeriveAESKey([]byte(secret))
 	switch Upstream {
 	case "ws":
 		return &WSMessage{RawMessage: &RawMessage{Conn: conn, UUID: uuid, CryptoSecret: key}}
@@ -430,7 +436,7 @@ func NewUpMsg(conn net.Conn, secret, uuid string) Message {
 
 // NewDownMsg creates a downstream message encoder/decoder.
 func NewDownMsg(conn net.Conn, secret, uuid string) Message {
-	key := crypto.KeyPadding([]byte(secret))
+	key := crypto.DeriveAESKey([]byte(secret))
 	switch Downstream {
 	case "ws":
 		return &WSMessage{RawMessage: &RawMessage{Conn: conn, UUID: uuid, CryptoSecret: key}}

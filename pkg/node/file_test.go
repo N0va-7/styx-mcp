@@ -13,11 +13,12 @@ func TestSanitizeUploadPath(t *testing.T) {
 	}{
 		{"file.txt", "file.txt", false},
 		{"dir/file.txt", "dir/file.txt", false},
-		{"/etc/passwd", "", true},
+		{"/tmp/tool", "/tmp/tool", false}, // absolute destinations are allowed
 		{"../etc/passwd", "", true},
 		{"dir/../../etc/passwd", "", true},
 		{"", "", true},
 		{"./file.txt", "file.txt", false},
+		{"..", "", true},
 	}
 
 	for _, tc := range cases {

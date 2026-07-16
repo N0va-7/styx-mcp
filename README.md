@@ -102,8 +102,8 @@ make test
     "styx-mcp": {
       "command": "/absolute/path/to/styx-mcp/scripts/styx-mcp-wrapper.sh",
       "env": {
-        "STYX_SECRET": "change-me",
-        "STYX_LISTEN": "0.0.0.0:19137",
+        "STYX_SECRET": "change-me-to-a-strong-secret",
+        "STYX_LISTEN": "127.0.0.1:19137",
         "STYX_LOG": "/tmp/styx-mcp-controller.log"
       }
     }
@@ -120,9 +120,10 @@ make test
 
 | Env | Default | Meaning |
 | :--- | :--- | :--- |
-| `STYX_SECRET` | `secret` | Shared secret (`-s`) |
-| `STYX_LISTEN` | `0.0.0.0:19137` | Agent listen addr on controller |
+| `STYX_SECRET` | *(required)* | Shared secret (`-s`) |
+| `STYX_LISTEN` | `127.0.0.1:19137` | Agent listen addr on controller |
 | `STYX_LOG` | `/tmp/styx-mcp-controller.log` | Controller log |
+| `STYX_MCP_LOG` | *(unset)* | Optional raw MCP stdio log path |
 | `STYX_BIN_DIR` | `release/<os>-<arch>` | Binary directory override |
 
 Never commit real secrets into public configs.
@@ -265,10 +266,13 @@ Controller and agents must share the **same secret** (and matching TLS/WS option
 
 ## Security notes
 
-- Treat `-s` / `STYX_SECRET` like a password; rotate after shared labs.
+- Treat `-s` / `STYX_SECRET` like a password; rotate after shared labs. The wrapper **requires** `STYX_SECRET` (no weak default).
+- Payload encryption uses **HKDF-SHA256** derived AES-256-GCM keys (controller and agents must run matching versions).
+- Optional TLS (`-tls-enable`) derives a stable cert from the shared secret and verifies peers (still use a strong secret).
+- Default wrapper listen is `127.0.0.1:19137`; set `STYX_LISTEN=0.0.0.0:…` only for remote agents.
 - Bind SOCKS to `127.0.0.1` unless you intentionally expose it.
-- Upload paths are sanitized; still only upload to hosts you control.
-- Builds may log MCP stdio under `/tmp/styx-mcp-mcp.log` — don’t put secrets in tool args while logging is on.
+- Upload paths allow absolute destinations but reject `..`; max single-file transfer is 32 MiB.
+- MCP stdio logging is **off** by default; set `STYX_MCP_LOG=/path` only when debugging (may contain secrets).
 
 ## Project layout
 

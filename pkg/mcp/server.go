@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -66,10 +67,17 @@ func (m *mcpLogReader) Read(p []byte) (int, error) {
 }
 
 // Serve starts the MCP server on stdio.
+// Set STYX_MCP_LOG to a file path to capture raw MCP stdio (may contain secrets).
+// When unset, stdio is not logged.
 func (s *Server) Serve() error {
-	logFile, err := os.OpenFile("/tmp/styx-mcp-mcp.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logPath := strings.TrimSpace(os.Getenv("STYX_MCP_LOG"))
+	if logPath == "" {
+		return server.ServeStdio(s.mcpserver)
+	}
+
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		slog.Warn("failed to open mcp log file", "error", err)
+		slog.Warn("failed to open mcp log file", "path", logPath, "error", err)
 		return server.ServeStdio(s.mcpserver)
 	}
 	defer logFile.Close()
@@ -126,7 +134,7 @@ func (s *Server) registerTools() {
 	s.mcpserver.AddTool(mcp.NewTool("upload_file",
 		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID to upload to")),
 		mcp.WithString("local_path", mcp.Required(), mcp.Description("Local file path")),
-		mcp.WithString("remote_path", mcp.Required(), mcp.Description("Remote destination path")),
+		mcp.WithString("remote_path", mcp.Required(), mcp.Description("Remote destination path (absolute or relative; no '..')")),
 	), s.handleUploadFile)
 
 	// Named like sibling tools (upload_file / start_*) — some MCP clients
@@ -193,14 +201,12 @@ func (s *Server) handleListNodes(ctx context.Context, request mcp.CallToolReques
 	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.Calculate}
 	<-s.controller.Topology.ResultChan
 
-	nodes := []map[string]interface{}{}
-	for i := 0; ; i++ {
-		node, ok := s.controller.GetNodeInfo(i)
-		if !ok {
-			break
-		}
+	entries := s.controller.ListNodes()
+	nodes := make([]map[string]interface{}, 0, len(entries))
+	for _, e := range entries {
+		node := e.Node
 		nodes = append(nodes, map[string]interface{}{
-			"id":       i,
+			"id":       e.ID,
 			"uuid":     node.UUID,
 			"ip":       node.CurrentIP,
 			"hostname": node.CurrentHostname,
@@ -587,6 +593,10 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return s.failure(fmt.Sprintf("read local file failed: %v", err)), nil
+	}
+	const maxUpload = 32 << 20
+	if len(data) > maxUpload {
+		return s.failure(fmt.Sprintf("local file too large: %d bytes (max %d)", len(data), maxUpload)), nil
 	}
 
 	s.controller.Topology.TaskChan <- &topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID}

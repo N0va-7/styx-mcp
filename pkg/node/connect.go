@@ -9,8 +9,12 @@ import (
 	"styx-mcp/pkg/transport"
 )
 
-// handleConnect actively connects to a new child node.
+// handleConnect actively connects to a new child without blocking the upstream loop.
 func (n *Node) handleConnect(req *protocol.ConnectStart) {
+	go n.doConnect(req)
+}
+
+func (n *Node) doConnect(req *protocol.ConnectStart) {
 	slog.Info("connecting to child", "addr", req.Addr)
 	conn, err := net.Dial("tcp", req.Addr)
 	if err != nil {
@@ -40,7 +44,7 @@ func (n *Node) handleConnect(req *protocol.ConnectStart) {
 	}
 
 	if n.Options.TlsEnable {
-		config, err := transport.NewClientTLSConfig(n.Options.Domain)
+		config, err := transport.NewClientTLSConfig(n.Options.Secret, n.Options.Domain)
 		if err != nil {
 			conn.Close()
 			n.sendConnectDone(false)
@@ -100,53 +104,15 @@ func (n *Node) handleConnect(req *protocol.ConnectStart) {
 		n.sendConnectDone(false)
 		return
 	}
-	// Request UUID from controller for this new child.
+
 	childIP := conn.RemoteAddr().String()
-	childReq := &protocol.ChildUUIDReq{
-		ParentUUIDLen: uint16(len(n.UUID)),
-		ParentUUID:    n.UUID,
-		IPLen:         uint16(len(childIP)),
-		IP:            childIP,
-	}
-
-	reqHeader := &protocol.Header{
-		Version:     1,
-		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
-		MessageType: protocol.CHILDUUIDREQ,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
-	}
-
-	sMessage = protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, reqHeader, childReq, false); err != nil {
-		conn.Close()
-		n.sendConnectDone(false)
-		return
-	}
-	if err := sMessage.SendMessage(); err != nil {
-		conn.Close()
-		n.sendConnectDone(false)
-		return
-	}
-
-	// Wait for UUID assignment.
-	respHeader, respMessage, err := protocol.DestructMessage(protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID))
+	childUUID, err := n.requestChildUUID(childIP)
 	if err != nil {
 		slog.Error("wait for child UUID failed", "error", err)
 		conn.Close()
 		n.sendConnectDone(false)
 		return
 	}
-	if respHeader.MessageType != protocol.CHILDUUIDRES {
-		slog.Error("unexpected response type", "type", respHeader.MessageType)
-		conn.Close()
-		n.sendConnectDone(false)
-		return
-	}
-
-	uuidRes := respMessage.(*protocol.ChildUUIDRes)
-	childUUID := uuidRes.UUID
 
 	// Send UUID to child.
 	uuidMess := &protocol.UUIDMess{
@@ -201,12 +167,7 @@ func (n *Node) sendConnectDone(ok bool) {
 		Route:       protocol.TEMP_ROUTE,
 	}
 
-	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, header, res, false); err != nil {
-		slog.Error("send connect done failed", "error", err)
-		return
-	}
-	if err := sMessage.SendMessage(); err != nil {
+	if err := n.sendToParent(header, res); err != nil {
 		slog.Error("send connect done failed", "error", err)
 	}
 }

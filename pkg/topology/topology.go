@@ -2,6 +2,7 @@ package topology
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"styx-mcp/internal/utils"
@@ -25,6 +26,7 @@ const (
 	UpdateMemo
 	GetParent
 	GetFirstHop
+	ListAll
 )
 
 // Node represents an online agent in the topology.
@@ -70,6 +72,12 @@ type Task struct {
 	IsFirst    bool
 }
 
+// NodeEntry pairs a stable numeric ID with a node snapshot.
+type NodeEntry struct {
+	ID   int
+	Node *Node
+}
+
 // Result is returned by the topology manager.
 type Result struct {
 	IsExist  bool
@@ -78,6 +86,8 @@ type Result struct {
 	IDNum    int
 	AllNodes []string
 	Node     *Node
+	// Nodes is populated by ListAll (sorted by ID ascending).
+	Nodes []NodeEntry
 }
 
 // NewTopology creates a new topology manager.
@@ -125,6 +135,8 @@ func (t *Topology) Run() {
 			t.updateMemo(task)
 		case GetParent:
 			t.getParent(task)
+		case ListAll:
+			t.listAll()
 		}
 	}
 }
@@ -169,6 +181,26 @@ func (t *Topology) getNode(task *Task) {
 	copy := *node
 	copy.ChildrenUUID = append([]string{}, node.ChildrenUUID...)
 	t.ResultChan <- &Result{IsExist: true, Node: &copy}
+}
+
+// listAll returns every online node, sorted by numeric ID.
+// Unlike GetUUID/GetNode loops that stop at the first missing ID, this
+// correctly handles sparse IDs after DelNode.
+func (t *Topology) listAll() {
+	ids := make([]int, 0, len(t.nodes))
+	for id := range t.nodes {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	entries := make([]NodeEntry, 0, len(ids))
+	for _, id := range ids {
+		node := t.nodes[id]
+		cp := *node
+		cp.ChildrenUUID = append([]string{}, node.ChildrenUUID...)
+		entries = append(entries, NodeEntry{ID: id, Node: &cp})
+	}
+	t.ResultChan <- &Result{Nodes: entries}
 }
 
 func (t *Topology) checkNode(task *Task) {

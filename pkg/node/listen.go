@@ -10,8 +10,12 @@ import (
 	"styx-mcp/pkg/transport"
 )
 
-// handleListen starts a listener on this node for child connections.
+// handleListen starts a listener for one child without blocking the upstream loop.
 func (n *Node) handleListen(req *protocol.ListenReq) {
+	go n.doListen(req)
+}
+
+func (n *Node) doListen(req *protocol.ListenReq) {
 	addr, _, err := utils.CheckIPPort(req.Addr)
 	if err != nil {
 		slog.Error("invalid listen address", "error", err)
@@ -25,16 +29,16 @@ func (n *Node) handleListen(req *protocol.ListenReq) {
 		n.sendListenRes(false)
 		return
 	}
+	// Report listen OK immediately so the controller is not blocked on Accept.
 	n.sendListenRes(true)
 
 	// Accept exactly one child connection per listen request.
 	conn, err := listener.Accept()
+	listener.Close()
 	if err != nil {
 		slog.Error("accept child failed", "error", err)
-		listener.Close()
 		return
 	}
-	listener.Close()
 
 	n.handleChildConnection(conn)
 }
@@ -54,12 +58,7 @@ func (n *Node) sendListenRes(ok bool) {
 		Route:       protocol.TEMP_ROUTE,
 	}
 
-	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, header, res, false); err != nil {
-		slog.Error("send listen res failed", "error", err)
-		return
-	}
-	if err := sMessage.SendMessage(); err != nil {
+	if err := n.sendToParent(header, res); err != nil {
 		slog.Error("send listen res failed", "error", err)
 	}
 }
@@ -74,7 +73,7 @@ func (n *Node) acceptChildren() {
 // handleChildConnection performs handshake with a new child and requests a UUID from upstream.
 func (n *Node) handleChildConnection(conn net.Conn) {
 	if n.Options.TlsEnable {
-		config, err := transport.NewServerTLSConfig()
+		config, err := transport.NewServerTLSConfig(n.Options.Secret, n.Options.Domain)
 		if err != nil {
 			conn.Close()
 			return
@@ -114,43 +113,13 @@ func (n *Node) handleChildConnection(conn net.Conn) {
 		return
 	}
 
-	// Request UUID from upstream (controller).
 	childIP := conn.RemoteAddr().String()
-	childReq := &protocol.ChildUUIDReq{
-		ParentUUIDLen: uint16(len(n.UUID)),
-		ParentUUID:    n.UUID,
-		IPLen:         uint16(len(childIP)),
-		IP:            childIP,
-	}
-
-	reqHeader := &protocol.Header{
-		Version:     1,
-		Sender:      n.UUID,
-		Accepter:    protocol.ADMIN_UUID,
-		MessageType: protocol.CHILDUUIDREQ,
-		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
-		Route:       protocol.TEMP_ROUTE,
-	}
-
-	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, reqHeader, childReq, false); err != nil {
+	childUUID, err := n.requestChildUUID(childIP)
+	if err != nil {
+		slog.Error("child UUID request failed", "error", err)
 		conn.Close()
 		return
 	}
-	if err := sMessage.SendMessage(); err != nil {
-		conn.Close()
-		return
-	}
-
-	// Wait for UUID assignment from controller.
-	respHeader, respMessage, err := protocol.DestructMessage(protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID))
-	if err != nil || respHeader.MessageType != protocol.CHILDUUIDRES {
-		conn.Close()
-		return
-	}
-
-	uuidRes := respMessage.(*protocol.ChildUUIDRes)
-	childUUID := uuidRes.UUID
 
 	// Respond to child with HI.
 	hiMess := &protocol.HIMess{
@@ -266,13 +235,7 @@ func (n *Node) removeChild(uuid string) {
 		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
 		Route:       protocol.TEMP_ROUTE,
 	}
-	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)
-	if err := protocol.ConstructMessage(sMessage, header, off, false); err != nil {
-		slog.Error("notify child offline failed", "error", err)
-		return
-	}
-	if err := sMessage.SendMessage(); err != nil {
+	if err := n.sendToParent(header, off); err != nil {
 		slog.Error("notify child offline failed", "error", err)
 	}
 }
-

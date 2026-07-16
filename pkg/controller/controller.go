@@ -102,7 +102,7 @@ func (c *Controller) acceptLoop() {
 
 func (c *Controller) handleIncoming(conn net.Conn) {
 	if c.Options.TlsEnable {
-		config, err := transport.NewServerTLSConfig()
+		config, err := transport.NewServerTLSConfig(c.Options.Secret, c.Options.Domain)
 		if err != nil {
 			conn.Close()
 			return
@@ -219,7 +219,7 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 		}
 
 		if c.Options.TlsEnable {
-			config, err := transport.NewClientTLSConfig(c.Options.Domain)
+			config, err := transport.NewClientTLSConfig(c.Options.Secret, c.Options.Domain)
 			if err != nil {
 				conn.Close()
 				continue
@@ -539,6 +539,16 @@ func (c *Controller) GetNodeInfo(uuidNum int) (*topology.Node, bool) {
 	return nodeRes.Node, true
 }
 
+// ListNodes returns all online nodes with their numeric IDs (sparse-ID safe).
+func (c *Controller) ListNodes() []topology.NodeEntry {
+	c.Topology.TaskChan <- &topology.Task{Mode: topology.ListAll}
+	res := <-c.Topology.ResultChan
+	if res.Nodes == nil {
+		return nil
+	}
+	return res.Nodes
+}
+
 func (c *Controller) StartBackward(nodeUUID, localAddr, targetAddr string) error {
 	bl, err := NewBackwardListener(c, nodeUUID, localAddr, targetAddr)
 	if err != nil {
@@ -596,27 +606,39 @@ func (c *Controller) handleSocksFin(uuid string, fin *protocol.SocksTCPFin) {
 }
 
 func (c *Controller) handleBackwardReady(uuid string, res *protocol.BackwardReady) {
-	c.backwardListenersMu.RLock()
-	defer c.backwardListenersMu.RUnlock()
-	for _, bl := range c.backwardListeners {
+	if bl := c.findBackwardListener(uuid, res.Seq); bl != nil {
 		bl.handleReady(res.Seq, res.OK == 1)
 	}
 }
 
 func (c *Controller) handleBackwardData(uuid string, data *protocol.BackwardData) {
-	c.backwardListenersMu.RLock()
-	defer c.backwardListenersMu.RUnlock()
-	for _, bl := range c.backwardListeners {
+	if bl := c.findBackwardListener(uuid, data.Seq); bl != nil {
 		bl.handleData(data.Seq, data.Data)
 	}
 }
 
 func (c *Controller) handleBackwardFin(uuid string, fin *protocol.BackWardFin) {
+	if bl := c.findBackwardListener(uuid, fin.Seq); bl != nil {
+		bl.handleFin(fin.Seq)
+	}
+}
+
+// findBackwardListener returns the reverse-forward listener for a node that owns seq.
+func (c *Controller) findBackwardListener(nodeUUID string, seq uint64) *BackwardListener {
 	c.backwardListenersMu.RLock()
 	defer c.backwardListenersMu.RUnlock()
 	for _, bl := range c.backwardListeners {
-		bl.handleFin(fin.Seq)
+		if bl.nodeUUID != nodeUUID {
+			continue
+		}
+		bl.mu.RLock()
+		_, ok := bl.seqConn[seq]
+		bl.mu.RUnlock()
+		if ok {
+			return bl
+		}
 	}
+	return nil
 }
 
 // unused avoids unused import errors.

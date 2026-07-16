@@ -27,6 +27,10 @@ type Node struct {
 	childrenMu  sync.RWMutex
 	childrenMsg chan *ChildrenMessage
 
+	// childUUIDWait delivers CHILDUUIDRES without racing the upstream reader.
+	childUUIDMu   sync.Mutex
+	childUUIDWait chan *protocol.ChildUUIDRes
+
 	BackwardManager *BackwardManager
 	SocksManager    *SocksManager
 
@@ -59,7 +63,7 @@ func NewNode(opt *Options) *Node {
 		UUID:        protocol.TEMP_UUID,
 		Options:     opt,
 		children:    make(map[string]*ChildConn),
-		childrenMsg: make(chan *ChildrenMessage, 10),
+		childrenMsg: make(chan *ChildrenMessage, 256),
 		pendingFile: &PendingFile{},
 	}
 	n.BackwardManager = NewBackwardManager(n)
@@ -131,7 +135,7 @@ func (n *Node) activeConnect() (net.Conn, error) {
 		}
 
 		if n.Options.TlsEnable {
-			config, err := transport.NewClientTLSConfig(n.Options.Domain)
+			config, err := transport.NewClientTLSConfig(n.Options.Secret, n.Options.Domain)
 			if err != nil {
 				conn.Close()
 				return nil, err
@@ -229,7 +233,7 @@ func (n *Node) passiveAccept() (net.Conn, error) {
 		slog.Info("accepted connection", "remote", conn.RemoteAddr())
 
 		if n.Options.TlsEnable {
-			config, err := transport.NewServerTLSConfig()
+			config, err := transport.NewServerTLSConfig(n.Options.Secret, n.Options.Domain)
 			if err != nil {
 				conn.Close()
 				continue
@@ -412,10 +416,13 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 		n.Memo = mmess.Memo
 	case protocol.LISTENREQ:
 		req := message.(*protocol.ListenReq)
-		n.handleListen(req)
+		n.handleListen(req) // non-blocking (spawns goroutine)
 	case protocol.CONNECTSTART:
 		req := message.(*protocol.ConnectStart)
-		n.handleConnect(req)
+		n.handleConnect(req) // non-blocking (spawns goroutine)
+	case protocol.CHILDUUIDRES:
+		res := message.(*protocol.ChildUUIDRes)
+		n.deliverChildUUID(res)
 	case protocol.SOCKSSTART:
 		req := message.(*protocol.SocksStart)
 		n.SocksManager.handleSocksStart(req)
@@ -430,7 +437,7 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 		n.SocksManager.handleSocksFin(req)
 	case protocol.FORWARDSTART:
 		req := message.(*protocol.ForwardStart)
-		n.handleForward(req)
+		n.handleForward(req) // non-blocking (spawns goroutine)
 	case protocol.BACKWARDSTART:
 		req := message.(*protocol.BackwardStart)
 		n.BackwardManager.handleBackwardStart(req)
@@ -514,7 +521,71 @@ func changeRoute(header *protocol.Header) string {
 	return routes[0]
 }
 
-// GetTLSConfig returns a tls.Config. This helper exists to avoid unused import errors.
-func GetTLSConfig() (*tls.Config, error) {
-	return transport.NewClientTLSConfig("")
+// deliverChildUUID routes a controller CHILDUUIDRES to the waiting connect/listen goroutine.
+func (n *Node) deliverChildUUID(res *protocol.ChildUUIDRes) {
+	n.childUUIDMu.Lock()
+	ch := n.childUUIDWait
+	n.childUUIDMu.Unlock()
+	if ch == nil {
+		slog.Warn("unexpected CHILDUUIDRES (no waiter)")
+		return
+	}
+	select {
+	case ch <- res:
+	default:
+		slog.Warn("CHILDUUIDRES dropped (waiter busy)")
+	}
+}
+
+// requestChildUUID asks the controller for a UUID for a new child and waits
+// for CHILDUUIDRES on the main upstream path (must not read ParentConn here).
+func (n *Node) requestChildUUID(childIP string) (string, error) {
+	wait := make(chan *protocol.ChildUUIDRes, 1)
+
+	n.childUUIDMu.Lock()
+	if n.childUUIDWait != nil {
+		n.childUUIDMu.Unlock()
+		return "", fmt.Errorf("another child UUID request is already in progress")
+	}
+	n.childUUIDWait = wait
+	n.childUUIDMu.Unlock()
+
+	defer func() {
+		n.childUUIDMu.Lock()
+		n.childUUIDWait = nil
+		n.childUUIDMu.Unlock()
+	}()
+
+	childReq := &protocol.ChildUUIDReq{
+		ParentUUIDLen: uint16(len(n.UUID)),
+		ParentUUID:    n.UUID,
+		IPLen:         uint16(len(childIP)),
+		IP:            childIP,
+	}
+	reqHeader := &protocol.Header{
+		Version:     1,
+		Sender:      n.UUID,
+		Accepter:    protocol.ADMIN_UUID,
+		MessageType: protocol.CHILDUUIDREQ,
+		RouteLen:    uint32(len(protocol.TEMP_ROUTE)),
+		Route:       protocol.TEMP_ROUTE,
+	}
+	if err := n.sendToParent(reqHeader, childReq); err != nil {
+		return "", fmt.Errorf("send child uuid req: %w", err)
+	}
+
+	select {
+	case res := <-wait:
+		if res == nil || res.UUID == "" {
+			return "", fmt.Errorf("empty child UUID from controller")
+		}
+		return res.UUID, nil
+	case <-time.After(30 * time.Second):
+		return "", fmt.Errorf("timeout waiting for child UUID")
+	}
+}
+
+// GetTLSConfig returns a tls.Config for the node's secret/domain.
+func GetTLSConfig(secret, domain string) (*tls.Config, error) {
+	return transport.NewClientTLSConfig(secret, domain)
 }

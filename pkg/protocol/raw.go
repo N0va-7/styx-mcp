@@ -163,6 +163,9 @@ func (message *RawMessage) DeconstructData() (*Header, interface{}, error) {
 		return nil, nil, err
 	}
 	header.RouteLen = binary.BigEndian.Uint32(routeLenBuf)
+	if header.RouteLen > MaxRouteLen {
+		return nil, nil, fmt.Errorf("route length %d exceeds max %d", header.RouteLen, MaxRouteLen)
+	}
 
 	routeBuf := make([]byte, header.RouteLen)
 	if header.RouteLen > 0 {
@@ -176,6 +179,9 @@ func (message *RawMessage) DeconstructData() (*Header, interface{}, error) {
 		return nil, nil, err
 	}
 	header.DataLen = binary.BigEndian.Uint64(dataLenBuf)
+	if header.DataLen > MaxDataLen {
+		return nil, nil, fmt.Errorf("data length %d exceeds max %d", header.DataLen, MaxDataLen)
+	}
 
 	dataBuf := make([]byte, header.DataLen)
 	if header.DataLen > 0 {
