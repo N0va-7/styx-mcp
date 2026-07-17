@@ -1,13 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="styx-mcp mark">
-  <!-- Transparent-friendly mark for GitHub avatar / dark & light -->
-  <path d="M56 72
-           C 96 72, 104 112, 128 128
-           C 152 144, 160 184, 200 184"
-        fill="none" stroke="#0F172A" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="56" cy="72" r="22" fill="#0F172A"/>
-  <circle cx="56" cy="72" r="9" fill="#FFFFFF"/>
-  <circle cx="128" cy="128" r="24" fill="#06B6D4"/>
-  <circle cx="128" cy="128" r="10" fill="#FFFFFF"/>
-  <circle cx="200" cy="184" r="22" fill="#0F172A"/>
-  <circle cx="200" cy="184" r="9" fill="#FFFFFF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="styx-mcp v3">
+  <!-- Geometric constellation: tighter, more technical -->
+  <defs>
+    <linearGradient id="beam" x1="48" y1="200" x2="208" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <!-- outer ring hint -->
+  <circle cx="128" cy="128" r="104" fill="none" stroke="#E2E8F0" stroke-width="2"/>
+  <!-- main beam -->
+  <path d="M60 188 L128 68 L196 188" fill="none" stroke="url(#beam)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- cross link hops -->
+  <path d="M88 148 L168 148" fill="none" stroke="#0F172A" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
+  <!-- nodes -->
+  <circle cx="60" cy="188" r="22" fill="#0F172A"/>
+  <circle cx="128" cy="68" r="24" fill="#06B6D4"/>
+  <circle cx="128" cy="68" r="9" fill="#FFFFFF"/>
+  <circle cx="196" cy="188" r="22" fill="#0F172A"/>
+  <circle cx="88" cy="148" r="12" fill="#6366F1"/>
+  <circle cx="168" cy="148" r="12" fill="#6366F1"/>
 </svg>

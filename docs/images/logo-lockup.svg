@@ -1,22 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="styx-mcp">
-  <!-- mark -->
-  <g transform="translate(8,12) scale(0.38)">
-    <path d="M56 72
-             C 96 72, 104 112, 128 128
-             C 152 144, 160 184, 200 184"
-          fill="none" stroke="#0F172A" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="56" cy="72" r="22" fill="#0F172A"/>
-    <circle cx="56" cy="72" r="9" fill="#FFFFFF"/>
-    <circle cx="128" cy="128" r="24" fill="#06B6D4"/>
-    <circle cx="128" cy="128" r="10" fill="#FFFFFF"/>
-    <circle cx="200" cy="184" r="22" fill="#0F172A"/>
-    <circle cx="200" cy="184" r="9" fill="#FFFFFF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 128" width="560" height="128" role="img" aria-label="styx-mcp">
+  <defs>
+    <linearGradient id="beam2" x1="24" y1="96" x2="104" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4,8) scale(0.42)">
+    <circle cx="128" cy="128" r="104" fill="none" stroke="#E2E8F0" stroke-width="2"/>
+    <path d="M60 188 L128 68 L196 188" fill="none" stroke="url(#beam2)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M88 148 L168 148" fill="none" stroke="#0F172A" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
+    <circle cx="60" cy="188" r="22" fill="#0F172A"/>
+    <circle cx="128" cy="68" r="24" fill="#06B6D4"/>
+    <circle cx="128" cy="68" r="9" fill="#FFFFFF"/>
+    <circle cx="196" cy="188" r="22" fill="#0F172A"/>
+    <circle cx="88" cy="148" r="12" fill="#6366F1"/>
+    <circle cx="168" cy="148" r="12" fill="#6366F1"/>
   </g>
-  <!-- wordmark -->
-  <text x="118" y="74"
-        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif"
-        font-size="48" font-weight="700" fill="#0F172A" letter-spacing="-1.2">styx-mcp</text>
-  <text x="120" y="98"
-        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif"
-        font-size="14" font-weight="500" fill="#64748B" letter-spacing="0.3">MCP-native multi-hop jump network</text>
+  <text x="132" y="72" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Inter,sans-serif"
+        font-size="52" font-weight="750" fill="#0F172A" letter-spacing="-1.5">styx-mcp</text>
+  <text x="134" y="98" font-family="ui-sans-serif,system-ui,sans-serif"
+        font-size="15" font-weight="500" fill="#64748B" letter-spacing="0.4">MCP-native multi-hop jump network</text>
 </svg>
