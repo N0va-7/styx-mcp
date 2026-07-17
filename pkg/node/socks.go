@@ -39,15 +39,19 @@ func NewSocksManager(n *Node) *SocksManager {
 	}
 }
 
-// handleSocksStart prepares the agent to accept tunneled SOCKS streams.
-func (sm *SocksManager) handleSocksStart(_ *protocol.SocksStart) {
+// closeAll tears down all SOCKS sessions (e.g. after upstream drop; no resume).
+func (sm *SocksManager) closeAll() {
 	sm.mu.Lock()
 	for _, sess := range sm.sessions {
 		sess.close()
 	}
 	sm.sessions = make(map[uint64]*socksSession)
 	sm.mu.Unlock()
+}
 
+// handleSocksStart prepares the agent to accept tunneled SOCKS streams.
+func (sm *SocksManager) handleSocksStart(_ *protocol.SocksStart) {
+	sm.closeAll()
 	sm.sendSocksReady(true)
 	slog.Info("socks ready (controller-side listener)")
 }

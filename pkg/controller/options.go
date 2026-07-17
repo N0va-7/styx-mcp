@@ -7,13 +7,14 @@ import (
 
 // Options holds command-line options for the controller.
 type Options struct {
-	Listen     string
-	Connect    string
-	Secret     string
-	Downstream string
-	TlsEnable  bool
-	Domain     string
-	Heartbeat  bool
+	Listen       string
+	Connect      string
+	Secret       string
+	Downstream   string
+	TlsEnable    bool
+	Domain       string
+	Heartbeat    bool
+	ReconnectMax int // max attempts for active (-c) dial; 0 = single try only
 }
 
 // ParseOptions parses command-line flags.
@@ -27,6 +28,7 @@ func ParseOptions() *Options {
 	flag.BoolVar(&opt.TlsEnable, "tls-enable", false, "enable TLS for node communication")
 	flag.StringVar(&opt.Domain, "domain", "", "TLS SNI domain")
 	flag.BoolVar(&opt.Heartbeat, "heartbeat", false, "enable heartbeat to first node")
+	flag.IntVar(&opt.ReconnectMax, "reconnect-max", 3, "max active dial attempts (0 = single try only)")
 	flag.Parse()
 
 	if opt.Listen == "" && opt.Connect == "" {

@@ -290,6 +290,7 @@ Useful result fields: `stats`, `open[]`, `summary.interesting[]`, optional `warn
 | `-tls-enable` | TLS on node links |
 | `-domain` | TLS SNI / WS domain |
 | `-heartbeat` | Heartbeat to first node |
+| `-reconnect-max` | Max active (`-c`) dial attempts (default `3`; `0` = single try) |
 
 </details>
 
@@ -303,13 +304,14 @@ Useful result fields: `stats`, `open[]`, `summary.interesting[]`, optional `warn
 | `-l` | Passive listen |
 | `-up` / `-down` | `raw` only (`ws` rejected) |
 | `-tls-enable` / `-domain` | TLS |
-| `-reconnect` | Seconds (`0` = off) |
+| `-reconnect` | Base delay seconds after unexpected drop (default `10`; `0` = off) |
+| `-reconnect-max` | Max reconnect attempts after drop (default `3`) |
 | `-socks5-proxy` / `-socks5-proxyu` / `-socks5-proxyp` | Reach parent via SOCKS5 |
 | `-http-proxy` | Reach parent via HTTP proxy |
 
 </details>
 
-Controller and agents must share the **same secret** (and matching TLS/WS options).
+Controller and agents must share the **same secret** (and matching TLS/WS options). After reconnect/reonline handshake changes, rebuild **both** binaries from the same commit.
 
 ## Security notes
 

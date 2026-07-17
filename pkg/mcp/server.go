@@ -1006,9 +1006,12 @@ func (s *Server) handleShutdownNode(ctx context.Context, request mcp.CallToolReq
 		MessageType: protocol.SHUTDOWN,
 	}
 	shutdownMess := &protocol.Shutdown{OK: 1}
+	// Always send SHUTDOWN before close so the agent sets do-not-reconnect.
 	if err := s.controller.SendToNode(res.UUID, header, shutdownMess); err != nil {
 		return s.failure(fmt.Sprintf("failed to send shutdown: %v", err)), nil
 	}
+	// Close after SHUTDOWN is on the wire; agent read path processes SHUTDOWN first.
+	s.controller.CloseNodeConn(res.UUID)
 
 	return s.success(map[string]interface{}{"success": true, "node_id": nodeID}), nil
 }

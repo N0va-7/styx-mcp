@@ -35,6 +35,9 @@ type Node struct {
 	SocksManager    *SocksManager
 
 	pendingFile *PendingFile
+
+	// doNotReconnect is set on intentional SHUTDOWN so the process exits without retry.
+	doNotReconnect bool
 }
 
 // PendingFile tracks an in-progress file upload for this node.
@@ -73,7 +76,7 @@ func NewNode(opt *Options) *Node {
 	return n
 }
 
-// Run starts the node.
+// Run starts the node and, for active mode, reconnects after unexpected upstream loss.
 func (n *Node) Run() error {
 	conn, err := n.establishConnection()
 	if err != nil {
@@ -83,7 +86,7 @@ func (n *Node) Run() error {
 	n.ParentConn = conn
 	n.sendMyInfo()
 
-	// Start child message dispatcher.
+	// Start child message dispatcher once for the process lifetime.
 	go n.dispatchChildrenMessages()
 
 	// If passive mode, start accepting child connections.
@@ -91,9 +94,51 @@ func (n *Node) Run() error {
 		go n.acceptChildren()
 	}
 
-	// Main upstream message loop.
-	n.handleUpstream()
-	return nil
+	for {
+		n.handleUpstream()
+		n.teardownLocalState()
+
+		if !shouldAttemptReconnect(
+			n.doNotReconnect,
+			n.Options.Reconnect,
+			n.Options.ReconnectMax,
+			n.Options.Mode() == "active",
+		) {
+			if n.doNotReconnect {
+				slog.Info("upstream offline after shutdown; not reconnecting")
+				return nil
+			}
+			slog.Warn("upstream offline; reconnect disabled or not applicable")
+			return fmt.Errorf("upstream offline")
+		}
+
+		// Post-drop reconnect: max N attempts with backoff+jitter; success resets budget.
+		reconnected := false
+		for attempt := 1; attempt <= n.Options.ReconnectMax; attempt++ {
+			delay := reconnectDelay(n.Options.Reconnect, attempt)
+			slog.Info("reconnect scheduled",
+				"attempt", attempt,
+				"max", n.Options.ReconnectMax,
+				"delay", delay,
+			)
+			time.Sleep(delay)
+
+			conn, err := n.activeReconnect()
+			if err != nil {
+				slog.Warn("reconnect attempt failed", "attempt", attempt, "error", err)
+				continue
+			}
+			n.ParentConn = conn
+			n.sendMyInfo()
+			slog.Info("reconnected to upstream", "uuid", n.UUID, "attempt", attempt)
+			reconnected = true
+			break
+		}
+		if !reconnected {
+			return fmt.Errorf("reconnect exhausted after %d attempts", n.Options.ReconnectMax)
+		}
+		// Successful online resets attempt budget for the next future drop.
+	}
 }
 
 func (n *Node) establishConnection() (net.Conn, error) {
@@ -107,26 +152,10 @@ func (n *Node) establishConnection() (net.Conn, error) {
 }
 
 func (n *Node) activeConnect() (net.Conn, error) {
-	hiMess := &protocol.HIMess{
-		GreetingLen: uint16(len(protocol.HelloFromAgent)),
-		Greeting:    protocol.HelloFromAgent,
-		UUIDLen:     uint16(len(protocol.JoinUUID)),
-		UUID:        protocol.JoinUUID,
-		IsAdmin:     0,
-		IsReconnect: 0,
-	}
-
-	header := &protocol.Header{
-		Version:     1,
-		Sender:      protocol.JoinUUID,
-		Accepter:    protocol.ControllerUUID,
-		MessageType: protocol.HI,
-		RouteLen:    uint32(len(protocol.NoRoute)),
-		Route:       protocol.NoRoute,
-	}
-
+	// Initial join: JoinUUID, IsReconnect=0. Retries while Reconnect>0 until success
+	// (post-session reconnect is capped separately via ReconnectMax).
 	for {
-		conn, err := net.Dial("tcp", n.Options.Connect)
+		conn, err := n.dialAndHandshake(false)
 		if err != nil {
 			if n.Options.Reconnect > 0 {
 				slog.Warn("connect failed, retrying", "error", err, "interval", n.Options.Reconnect)
@@ -135,64 +164,113 @@ func (n *Node) activeConnect() (net.Conn, error) {
 			}
 			return nil, err
 		}
+		return conn, nil
+	}
+}
 
-		if n.Options.TlsEnable {
-			config, err := transport.NewClientTLSConfig(n.Options.Secret, n.Options.Domain)
-			if err != nil {
-				conn.Close()
-				return nil, err
-			}
-			conn = transport.WrapTLSClientConn(conn, config)
-		}
+// activeReconnect performs one dial+handshake using the existing UUID and IsReconnect=1.
+func (n *Node) activeReconnect() (net.Conn, error) {
+	if n.UUID == "" || n.UUID == protocol.JoinUUID {
+		return nil, fmt.Errorf("cannot reconnect without a prior UUID")
+	}
+	return n.dialAndHandshake(true)
+}
 
-		param := &protocol.NegParam{Conn: conn, Domain: n.Options.Domain}
-		proto := protocol.NewUpProto(param)
-		if err := proto.CNegotiate(); err != nil {
-			conn.Close()
-			return nil, err
-		}
+// dialAndHandshake dials the parent once, negotiates, preauths, and completes HI/UUID.
+// When reconnect is true, HI carries the existing UUID and IsReconnect=1.
+func (n *Node) dialAndHandshake(reconnect bool) (net.Conn, error) {
+	uuid := protocol.JoinUUID
+	var isReconnect uint16
+	if reconnect {
+		uuid = n.UUID
+		isReconnect = 1
+	}
 
-		if err := preauth.ActivePreAuth(conn, n.Options.Secret); err != nil {
-			conn.Close()
-			return nil, err
-		}
+	hiMess := &protocol.HIMess{
+		GreetingLen: uint16(len(protocol.HelloFromAgent)),
+		Greeting:    protocol.HelloFromAgent,
+		UUIDLen:     uint16(len(uuid)),
+		UUID:        uuid,
+		IsAdmin:     0,
+		IsReconnect: isReconnect,
+	}
 
-		sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
-		if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
-			conn.Close()
-			return nil, err
-		}
-		if err := sMessage.SendMessage(); err != nil {
-			conn.Close()
-			return nil, err
-		}
+	header := &protocol.Header{
+		Version:     1,
+		Sender:      uuid,
+		Accepter:    protocol.ControllerUUID,
+		MessageType: protocol.HI,
+		RouteLen:    uint32(len(protocol.NoRoute)),
+		Route:       protocol.NoRoute,
+	}
 
-		rMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
-		fHeader, fMessage, err := protocol.DestructMessage(rMessage)
+	conn, err := net.Dial("tcp", n.Options.Connect)
+	if err != nil {
+		return nil, err
+	}
+
+	if n.Options.TlsEnable {
+		config, err := transport.NewClientTLSConfig(n.Options.Secret, n.Options.Domain)
 		if err != nil {
 			conn.Close()
-			if n.Options.Reconnect > 0 {
-				time.Sleep(time.Duration(n.Options.Reconnect) * time.Second)
-				continue
-			}
 			return nil, err
 		}
-
-		if fHeader.MessageType == protocol.HI {
-			mmess := fMessage.(*protocol.HIMess)
-			if mmess.Greeting == protocol.HelloFromController && mmess.IsAdmin == 1 {
-				n.UUID = n.achieveUUID(conn)
-				if n.UUID == "" {
-					conn.Close()
-					return nil, fmt.Errorf("failed to obtain UUID")
-				}
-				return conn, nil
-			}
-		}
-
-		conn.Close()
-		return nil, fmt.Errorf("invalid upstream response")
+		conn = transport.WrapTLSClientConn(conn, config)
 	}
+
+	param := &protocol.NegParam{Conn: conn, Domain: n.Options.Domain}
+	proto := protocol.NewUpProto(param)
+	if err := proto.CNegotiate(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	if err := preauth.ActivePreAuth(conn, n.Options.Secret); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	// Handshake frames use JoinUUID for decrypt targeting (same as first join);
+	// identity for reconnect is carried in HIMess.UUID / IsReconnect.
+	sMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
+	if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if err := sMessage.SendMessage(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	rMessage := protocol.NewUpMsg(conn, n.Options.Secret, protocol.JoinUUID)
+	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	if fHeader.MessageType != protocol.HI {
+		conn.Close()
+		return nil, fmt.Errorf("invalid upstream response type %d", fHeader.MessageType)
+	}
+	mmess, ok := fMessage.(*protocol.HIMess)
+	if !ok || mmess.Greeting != protocol.HelloFromController || mmess.IsAdmin != 1 {
+		conn.Close()
+		return nil, fmt.Errorf("invalid upstream HI")
+	}
+
+	// Controller always confirms identity with UUIDMess (same UUID on reconnect).
+	got := n.achieveUUID(conn)
+	if got == "" {
+		conn.Close()
+		return nil, fmt.Errorf("failed to obtain UUID")
+	}
+	if reconnect && got != n.UUID {
+		conn.Close()
+		return nil, fmt.Errorf("reconnect UUID mismatch: got %s want %s", got, n.UUID)
+	}
+	n.UUID = got
+	return conn, nil
 }
 
 func (n *Node) passiveAccept() (net.Conn, error) {
@@ -517,8 +595,12 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 		}
 		n.handleScanReq(req)
 	case protocol.SHUTDOWN:
-		n.ParentConn.Close()
-		slog.Info("shutdown received")
+		// Intentional control-plane stop: do not auto-reconnect for this process.
+		n.doNotReconnect = true
+		if n.ParentConn != nil {
+			n.ParentConn.Close()
+		}
+		slog.Info("shutdown received; reconnect disabled")
 	case protocol.HEARTBEAT:
 		// no-op
 	default:
@@ -573,8 +655,25 @@ func (n *Node) relayUpstream(header *protocol.Header, payload []byte) {
 }
 
 func (n *Node) handleUpstreamOffline() {
-	// TODO: reconnect logic and notify children.
-	slog.Warn("upstream offline")
+	// Reconnect / exit is decided by Run() after handleUpstream returns.
+	// Multi-hop UPSTREAMOFFLINE fan-out to children is out of scope (v1).
+	slog.Warn("upstream offline", "do_not_reconnect", n.doNotReconnect)
+}
+
+// teardownLocalState drops in-flight SOCKS/backward/file state after a session loss.
+// Streams are not resumed across reconnect (design D6).
+func (n *Node) teardownLocalState() {
+	if n.ParentConn != nil {
+		_ = n.ParentConn.Close()
+		n.ParentConn = nil
+	}
+	if n.SocksManager != nil {
+		n.SocksManager.closeAll()
+	}
+	if n.BackwardManager != nil {
+		n.BackwardManager.closeAll()
+	}
+	n.pendingFile = &PendingFile{}
 }
 
 func changeRoute(header *protocol.Header) string {

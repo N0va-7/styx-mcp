@@ -290,6 +290,7 @@ export ALL_PROXY=socks5h://127.0.0.1:10801
 | `-tls-enable` | 节点链路 TLS |
 | `-domain` | TLS SNI / WS domain |
 | `-heartbeat` | 对首节点心跳 |
+| `-reconnect-max` | 主动（`-c`）拨号最大次数（默认 `3`；`0` = 只试一次） |
 
 </details>
 
@@ -303,13 +304,14 @@ export ALL_PROXY=socks5h://127.0.0.1:10801
 | `-l` | 被动监听 |
 | `-up` / `-down` | 仅 `raw`（`ws` 会拒绝） |
 | `-tls-enable` / `-domain` | TLS |
-| `-reconnect` | 重连间隔秒（`0` = 关） |
+| `-reconnect` | 意外断线后重连基础间隔秒（默认 `10`；`0` = 关） |
+| `-reconnect-max` | 断线后最大重连次数（默认 `3`） |
 | `-socks5-proxy` / `-socks5-proxyu` / `-socks5-proxyp` | 经 SOCKS5 连父节点 |
 | `-http-proxy` | 经 HTTP 代理连父节点 |
 
 </details>
 
-controller 与 agent 必须使用 **相同密钥**（TLS/WS 配置也要一致）。
+controller 与 agent 必须使用 **相同密钥**（TLS/WS 配置也要一致）。重连 / reonline 握手变更后，controller 与 agent 须用同一 commit 构建。
 
 ## 安全建议
 

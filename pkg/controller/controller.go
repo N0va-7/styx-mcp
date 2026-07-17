@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 
 	"styx-mcp/internal/utils"
 	"styx-mcp/pkg/protocol"
@@ -102,7 +103,8 @@ func (c *Controller) startActive() error {
 	if err != nil {
 		return err
 	}
-	go c.handleNode(conn, true)
+	// Active dial reaches a passive agent first join (not agent IsReconnect path).
+	go c.handleNode(conn, true, false)
 	return nil
 }
 
@@ -181,6 +183,10 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
+	isReconnect := mmess.IsReconnect != 0 &&
+		mmess.UUID != "" &&
+		mmess.UUID != protocol.JoinUUID
+
 	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	hiMess := &protocol.HIMess{
 		GreetingLen: uint16(len(protocol.HelloFromController)),
@@ -207,12 +213,20 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
-	uuid := utils.GenerateUUID()
-	if uuid == "" {
-		conn.Close()
-		return
+	var uuid string
+	if isReconnect {
+		// Reuse prior UUID; do not mint a new one (topology reonline keeps node_id).
+		uuid = mmess.UUID
+		slog.Info("agent reconnect handshake", "uuid", uuid)
+	} else {
+		uuid = utils.GenerateUUID()
+		if uuid == "" {
+			conn.Close()
+			return
+		}
 	}
 
+	// Confirm identity with UUIDMess (same UUID on reconnect path).
 	uuidMess := &protocol.UUIDMess{UUIDLen: uint16(len(uuid)), UUID: uuid}
 	uuidHeader := &protocol.Header{
 		Version:     1,
@@ -232,10 +246,32 @@ func (c *Controller) handleIncoming(conn net.Conn) {
 		return
 	}
 
-	c.handleNode(conn, true)
+	c.handleNode(conn, true, isReconnect)
 }
 
 func (c *Controller) activeConnect() (net.Conn, error) {
+	max := c.Options.ReconnectMax
+	if max <= 0 {
+		max = 1 // 0 = single try only
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= max; attempt++ {
+		conn, err := c.tryActiveConnect()
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		slog.Warn("active dial failed", "attempt", attempt, "max", max, "error", err)
+		if attempt < max {
+			// Light backoff between controller active dial attempts.
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+	return nil, fmt.Errorf("active dial gave up after %d attempts: %w", max, lastErr)
+}
+
+func (c *Controller) tryActiveConnect() (net.Conn, error) {
 	hiMess := &protocol.HIMess{
 		GreetingLen: uint16(len(protocol.HelloFromAgent)),
 		Greeting:    protocol.HelloFromAgent,
@@ -253,63 +289,61 @@ func (c *Controller) activeConnect() (net.Conn, error) {
 		Route:       protocol.NoRoute,
 	}
 
-	for {
-		conn, err := net.Dial("tcp", c.Options.Connect)
-		if err != nil {
-			return nil, err
-		}
-
-		if c.Options.TlsEnable {
-			config, err := transport.NewClientTLSConfig(c.Options.Secret, c.Options.Domain)
-			if err != nil {
-				conn.Close()
-				continue
-			}
-			conn = transport.WrapTLSClientConn(conn, config)
-		}
-
-		param := &protocol.NegParam{Conn: conn, Domain: c.Options.Domain}
-		proto := protocol.NewDownProto(param)
-		if err := proto.CNegotiate(); err != nil {
-			conn.Close()
-			continue
-		}
-
-		if err := preauth.ActivePreAuth(conn, c.Options.Secret); err != nil {
-			conn.Close()
-			return nil, err
-		}
-
-		sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
-		if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
-			conn.Close()
-			return nil, err
-		}
-		if err := sMessage.SendMessage(); err != nil {
-			conn.Close()
-			return nil, err
-		}
-
-		rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
-		fHeader, fMessage, err := protocol.DestructMessage(rMessage)
-		if err != nil {
-			conn.Close()
-			continue
-		}
-
-		if fHeader.MessageType == protocol.HI {
-			mmess := fMessage.(*protocol.HIMess)
-			if mmess.Greeting == protocol.HelloFromController && mmess.IsAdmin == 0 {
-				return conn, nil
-			}
-		}
-
-		conn.Close()
-		return nil, fmt.Errorf("invalid node response")
+	conn, err := net.Dial("tcp", c.Options.Connect)
+	if err != nil {
+		return nil, err
 	}
+
+	if c.Options.TlsEnable {
+		config, err := transport.NewClientTLSConfig(c.Options.Secret, c.Options.Domain)
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		conn = transport.WrapTLSClientConn(conn, config)
+	}
+
+	param := &protocol.NegParam{Conn: conn, Domain: c.Options.Domain}
+	proto := protocol.NewDownProto(param)
+	if err := proto.CNegotiate(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	if err := preauth.ActivePreAuth(conn, c.Options.Secret); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	sMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
+	if err := protocol.ConstructMessage(sMessage, header, hiMess, false); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if err := sMessage.SendMessage(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
+	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	if fHeader.MessageType == protocol.HI {
+		mmess, ok := fMessage.(*protocol.HIMess)
+		if ok && mmess.Greeting == protocol.HelloFromController && mmess.IsAdmin == 0 {
+			return conn, nil
+		}
+	}
+
+	conn.Close()
+	return nil, fmt.Errorf("invalid node response")
 }
 
-func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
+func (c *Controller) handleNode(conn net.Conn, isFirst bool, isReconnect bool) {
 	// Wait for MYINFO to know the UUID, then start the read loop.
 	rMessage := protocol.NewDownMsg(conn, c.Options.Secret, protocol.ControllerUUID)
 	fHeader, fMessage, err := protocol.DestructMessage(rMessage)
@@ -326,7 +360,12 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 	info := fMessage.(*protocol.MyInfo)
 	uuid := info.UUID
 
+	// Replace any prior conn for this UUID; close old so its readLoop exits.
+	// Stale offline is ignored via generation guard (conn pointer compare).
 	c.connsMu.Lock()
+	if old, ok := c.conns[uuid]; ok && old != conn {
+		old.Close()
+	}
 	c.conns[uuid] = conn
 	c.connsMu.Unlock()
 
@@ -338,12 +377,22 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 		parentUUID = protocol.ControllerUUID
 	}
 
-	c.Topology.Do(&topology.Task{
-		Mode:       topology.AddNode,
-		Target:     topology.NewNode(uuid, conn.RemoteAddr().String()),
-		ParentUUID: parentUUID,
-		IsFirst:    isFirst,
-	})
+	target := topology.NewNode(uuid, conn.RemoteAddr().String())
+	if isReconnect {
+		c.Topology.Do(&topology.Task{
+			Mode:       topology.ReonlineNode,
+			Target:     target,
+			ParentUUID: parentUUID,
+			IsFirst:    isFirst,
+		})
+	} else {
+		c.Topology.Do(&topology.Task{
+			Mode:       topology.AddNode,
+			Target:     target,
+			ParentUUID: parentUUID,
+			IsFirst:    isFirst,
+		})
+	}
 
 	c.Topology.Do(&topology.Task{
 		Mode:       topology.UpdateDetail,
@@ -356,7 +405,12 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 
 	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
-	slog.Info("node online", "uuid", uuid, "peer", conn.RemoteAddr().String(), "local_addrs", info.LocalAddrs)
+	slog.Info("node online",
+		"uuid", uuid,
+		"peer", conn.RemoteAddr().String(),
+		"local_addrs", info.LocalAddrs,
+		"reconnect", isReconnect,
+	)
 
 	// Start read loop.
 	c.readLoop(uuid, conn)
@@ -373,7 +427,7 @@ func (c *Controller) readLoop(uuid string, conn net.Conn) {
 			} else {
 				slog.Error("read from node failed", "uuid", uuid, "error", err)
 			}
-			c.nodeOffline(uuid)
+			c.nodeOffline(uuid, conn)
 			return
 		}
 
@@ -410,7 +464,8 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		if !ok {
 			return
 		}
-		c.nodeOffline(off.UUID)
+		// Child offline reports have no local conn generation; force topology del.
+		c.nodeOffline(off.UUID, nil)
 
 	case protocol.LISTENRES:
 		res, ok := asMsg[*protocol.ListenRes](message, "LISTENRES", uuid)
@@ -582,11 +637,27 @@ func (c *Controller) handleChildUUIDReq(parentUUID string, req *protocol.ChildUU
 	slog.Info("child uuid assigned", "parent", parentUUID, "child", childUUID)
 }
 
-func (c *Controller) nodeOffline(uuid string) {
+// nodeOffline removes a node from the online set.
+// fromConn is the connection whose readLoop observed the drop. When non-nil,
+// offline is applied only if conns[uuid] still points at that conn (generation
+// guard against stale readLoops after reconnect). nil forces offline (e.g. child
+// NODEOFFLINE, intentional shutdown cleanup).
+func (c *Controller) nodeOffline(uuid string, fromConn net.Conn) {
 	c.connsMu.Lock()
-	if conn, ok := c.conns[uuid]; ok {
-		conn.Close()
+	current, ok := c.conns[uuid]
+	if ok {
+		if fromConn != nil && current != fromConn {
+			c.connsMu.Unlock()
+			slog.Debug("ignore stale offline", "uuid", uuid)
+			return
+		}
+		current.Close()
 		delete(c.conns, uuid)
+	} else if fromConn != nil {
+		// Direct-node offline after conn already replaced or removed.
+		c.connsMu.Unlock()
+		slog.Debug("ignore offline; conn already gone", "uuid", uuid)
+		return
 	}
 	c.connsMu.Unlock()
 
@@ -595,6 +666,16 @@ func (c *Controller) nodeOffline(uuid string) {
 	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
 	slog.Info("node offline", "uuid", uuid, "affected", res.AllNodes)
+}
+
+// CloseNodeConn closes the direct connection for uuid if present (after SHUTDOWN).
+func (c *Controller) CloseNodeConn(uuid string) {
+	c.connsMu.Lock()
+	conn, ok := c.conns[uuid]
+	c.connsMu.Unlock()
+	if ok && conn != nil {
+		conn.Close()
+	}
 }
 
 // SendToNode sends a message to a specific node by UUID.

@@ -7,18 +7,19 @@ import (
 
 // Options holds command-line options for the node.
 type Options struct {
-	Listen      string
-	Connect     string
-	Secret      string
-	Upstream    string
-	Downstream  string
-	TlsEnable   bool
-	Domain      string
-	Reconnect   int
-	Socks5Proxy string
-	Socks5User  string
-	Socks5Pass  string
-	HTTPProxy   string
+	Listen       string
+	Connect      string
+	Secret       string
+	Upstream     string
+	Downstream   string
+	TlsEnable    bool
+	Domain       string
+	Reconnect    int // base delay seconds for reconnect; 0 disables all auto-reconnect
+	ReconnectMax int // max post-drop reconnect attempts (ignored if Reconnect==0)
+	Socks5Proxy  string
+	Socks5User   string
+	Socks5Pass   string
+	HTTPProxy    string
 }
 
 // ParseOptions parses command-line flags.
@@ -32,7 +33,8 @@ func ParseOptions() *Options {
 	flag.StringVar(&opt.Downstream, "down", "raw", "downstream transport: raw only (ws not implemented)")
 	flag.BoolVar(&opt.TlsEnable, "tls-enable", false, "enable TLS for node communication")
 	flag.StringVar(&opt.Domain, "domain", "", "TLS SNI domain")
-	flag.IntVar(&opt.Reconnect, "reconnect", 0, "reconnect interval in seconds (0 to disable)")
+	flag.IntVar(&opt.Reconnect, "reconnect", 10, "reconnect base delay in seconds (0 to disable)")
+	flag.IntVar(&opt.ReconnectMax, "reconnect-max", 3, "max reconnect attempts after unexpected drop")
 	flag.StringVar(&opt.Socks5Proxy, "socks5-proxy", "", "socks5 proxy address")
 	flag.StringVar(&opt.Socks5User, "socks5-proxyu", "", "socks5 proxy username")
 	flag.StringVar(&opt.Socks5Pass, "socks5-proxyp", "", "socks5 proxy password")

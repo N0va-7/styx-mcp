@@ -27,6 +27,16 @@ func NewBackwardManager(n *Node) *BackwardManager {
 	}
 }
 
+// closeAll tears down all reverse-forward connections after upstream loss (no resume).
+func (bm *BackwardManager) closeAll() {
+	bm.mu.Lock()
+	for seq, conn := range bm.seqConn {
+		conn.Close()
+		delete(bm.seqConn, seq)
+	}
+	bm.mu.Unlock()
+}
+
 func (bm *BackwardManager) handleBackwardStart(req *protocol.BackwardStart) {
 	targetAddr, _, err := utils.CheckIPPort(req.TargetAddr)
 	if err != nil {
