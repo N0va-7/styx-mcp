@@ -1,7 +1,10 @@
 # dev-workflow Specification
 
 ## Purpose
-TBD - created by archiving change openspec-default-workflow. Update Purpose after archive.
+
+Define how contributors and agents use OpenSpec for all product work: changes,
+specs as contract, tests mapped to scenarios, and validation before commit.
+
 ## Requirements
 ### Requirement: All product work uses an OpenSpec change
 Feature work, bug fixes, and test backfill that touch behavior or code under

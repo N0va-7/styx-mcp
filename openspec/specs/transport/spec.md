@@ -7,9 +7,7 @@ preauth, styx wire identity, raw transport framing, and honest capability
 boundaries (no silent WebSocket). Controller listen bind failures MUST fail
 startup so MCP clients never see a healthy session with no inbound path for
 agents.
-
 ## Requirements
-
 ### Requirement: Passive listen hard-fails on bind error
 In passive mode the controller MUST bind its agent listen address during
 `Start()` and MUST return an error if the bind fails (including address already
@@ -35,12 +33,16 @@ exchange control messages.
 - **THEN** the agent appears in topology after handshake
 
 ### Requirement: WebSocket transport is rejected explicitly
-WebSocket (`ws`) transport MUST NOT pretend to work. CLI and protocol paths
-SHALL reject `ws` with an error stating it is not implemented and that raw
-should be used.
+WebSocket (`ws`) transport MUST NOT pretend to work. Controller and agent CLIs
+and protocol paths SHALL reject `ws` with an error stating it is not implemented
+and that raw should be used.
 
 #### Scenario: Agent rejects -up/-down ws
 - **WHEN** an agent is started with websocket upstream or downstream mode
+- **THEN** startup fails with a clear "not implemented; use raw" style error
+
+#### Scenario: Controller rejects -down ws
+- **WHEN** a controller is started with websocket downstream mode
 - **THEN** startup fails with a clear "not implemented; use raw" style error
 
 ### Requirement: Wire identity is styx-owned
@@ -59,3 +61,4 @@ built from the same revision before interoperability is claimed.
 #### Scenario: Protocol change deploy
 - **WHEN** wire protocol code changes
 - **THEN** operators rebuild both binaries from the same commit before e2e use
+
