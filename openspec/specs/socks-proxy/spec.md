@@ -21,6 +21,12 @@ address and SHALL exit proxied connections via the selected online node.
 - **THEN** the tool fails immediately with a clear "node not found" style error
   and does not bind a local listener for that request
 
+#### Scenario: Lab or loopback HTTP via SOCKS
+- **WHEN** a local agent is online and SOCKS is ready on the controller
+- **THEN** an HTTP client using that SOCKS endpoint can retrieve content from a
+  reachable target (loopback fixture in automated tests, or a configured lab URL
+  such as `http://10.7.11.116/`)
+
 ### Requirement: Forward listens on the agent
 `start_forward` SHALL instruct the selected agent to listen on `listen_address`
 and forward accepted connections to `target_address`. The controller host MUST
