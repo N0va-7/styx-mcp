@@ -345,13 +345,14 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 	}
 
 	task := s.controller.TaskManager.Create("start_listener")
+	nodeUUID := res.UUID
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
-			Accepter:    res.UUID,
+			Accepter:    nodeUUID,
 			MessageType: protocol.LISTENREQ,
 		}
 		req := &protocol.ListenReq{
@@ -359,13 +360,21 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 			AddrLen: uint64(len(address)),
 			Addr:    address,
 		}
-		if err := s.controller.SendToNode(res.UUID, header, req); err != nil {
+		ok, err := s.controller.AfterSendWait(nodeUUID, controller.AckListen, controller.DefaultAckTimeout, func() error {
+			return s.controller.SendToNode(nodeUUID, header, req)
+		})
+		if err != nil {
 			s.controller.TaskManager.SetError(task.ID, err)
+			return
+		}
+		if !ok {
+			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected listen on %s", address))
 			return
 		}
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
+			"ready":   true,
 		})
 	}()
 
@@ -394,26 +403,35 @@ func (s *Server) handleConnectNode(ctx context.Context, request mcp.CallToolRequ
 	}
 
 	task := s.controller.TaskManager.Create("connect_node")
+	nodeUUID := res.UUID
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
-			Accepter:    res.UUID,
+			Accepter:    nodeUUID,
 			MessageType: protocol.CONNECTSTART,
 		}
 		req := &protocol.ConnectStart{
 			AddrLen: uint16(len(address)),
 			Addr:    address,
 		}
-		if err := s.controller.SendToNode(res.UUID, header, req); err != nil {
+		ok, err := s.controller.AfterSendWait(nodeUUID, controller.AckConnect, controller.DefaultAckTimeout, func() error {
+			return s.controller.SendToNode(nodeUUID, header, req)
+		})
+		if err != nil {
 			s.controller.TaskManager.SetError(task.ID, err)
+			return
+		}
+		if !ok {
+			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected connect to %s", address))
 			return
 		}
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
+			"ready":   true,
 		})
 	}()
 
@@ -452,6 +470,7 @@ func (s *Server) handleStartSocks(ctx context.Context, request mcp.CallToolReque
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
+			"ready":   true,
 			"note":    "SOCKS5 listens on controller; traffic exits via the selected node",
 		})
 	}()
@@ -486,13 +505,14 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 	}
 
 	task := s.controller.TaskManager.Create("start_forward")
+	nodeUUID := res.UUID
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
-			Accepter:    res.UUID,
+			Accepter:    nodeUUID,
 			MessageType: protocol.FORWARDSTART,
 		}
 		req := &protocol.ForwardStart{
@@ -501,14 +521,22 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 			TargetAddrLen: uint16(len(targetAddress)),
 			TargetAddr:    targetAddress,
 		}
-		if err := s.controller.SendToNode(res.UUID, header, req); err != nil {
+		ok, err := s.controller.AfterSendWait(nodeUUID, controller.AckForward, controller.DefaultAckTimeout, func() error {
+			return s.controller.SendToNode(nodeUUID, header, req)
+		})
+		if err != nil {
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
+		if !ok {
+			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected forward %s -> %s", listenAddress, targetAddress))
+			return
+		}
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
-			"node_id":        nodeID,
-			"listen_address": listenAddress,
-			"target_address": targetAddress,
+			"node_id":         nodeID,
+			"listen_address":  listenAddress,
+			"target_address":  targetAddress,
+			"ready":           true,
 		})
 	}()
 

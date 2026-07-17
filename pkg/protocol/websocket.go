@@ -5,8 +5,8 @@ import (
 	"net"
 )
 
-// WSProto is a placeholder WebSocket transport negotiator.
-// Full WebSocket support is planned for Phase 6.
+// WSProto is a stub: WebSocket transport is not implemented.
+// CLI rejects -up/-down ws; these methods remain for switch completeness.
 type WSProto struct {
 	domain string
 	conn   net.Conn
@@ -14,12 +14,12 @@ type WSProto struct {
 
 // CNegotiate performs the client-side WebSocket handshake.
 func (proto *WSProto) CNegotiate() error {
-	return errors.New("websocket transport not implemented")
+	return errors.New("websocket transport not implemented; use raw")
 }
 
 // SNegotiate performs the server-side WebSocket handshake.
 func (proto *WSProto) SNegotiate() error {
-	return errors.New("websocket transport not implemented")
+	return errors.New("websocket transport not implemented; use raw")
 }
 
 // WSMessage is a placeholder WebSocket message wrapper.

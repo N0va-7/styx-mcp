@@ -35,7 +35,7 @@ LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
 ## 特性
 
 - 树形拓扑：主动（`-c`）/ 被动（`-l`），多级跳转
-- 双向 **HMAC** 预认证；可选 **TLS** / WebSocket
+- 双向 **HMAC** 预认证；可选 **TLS**（仅 raw TCP；WebSocket 未实现）
 - **SOCKS5** 开在 controller，本机工具经指定节点出站
 - 每流 **字节窗口流控**（禁止静默丢 SOCKS 数据；controller/agent 需同版本）
 - **Forward**（agent 监听）与 **Backward**（controller 监听）
@@ -239,7 +239,7 @@ export ALL_PROXY=socks5h://127.0.0.1:10801
 | `-s` | 预共享密钥 |
 | `-l` | 等待 agent：`[ip]:port` |
 | `-c` | 可选主动连接 |
-| `-down` | `raw` / `ws` |
+| `-down` | 仅 `raw`（`ws` 会拒绝） |
 | `-tls-enable` | 节点链路 TLS |
 | `-domain` | TLS SNI / WS domain |
 | `-heartbeat` | 对首节点心跳 |
@@ -254,7 +254,7 @@ export ALL_PROXY=socks5h://127.0.0.1:10801
 | `-s` | 预共享密钥 |
 | `-c` | 连接父节点 / controller |
 | `-l` | 被动监听 |
-| `-up` / `-down` | `raw` / `ws` |
+| `-up` / `-down` | 仅 `raw`（`ws` 会拒绝） |
 | `-tls-enable` / `-domain` | TLS |
 | `-reconnect` | 重连间隔秒（`0` = 关） |
 | `-socks5-proxy` / `-socks5-proxyu` / `-socks5-proxyp` | 经 SOCKS5 连父节点 |

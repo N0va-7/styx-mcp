@@ -35,7 +35,7 @@ Built for **agent-driven** ops (MCP-native control plane). Multi-hop topology dr
 ## Features
 
 - Tree topology: active (`-c`) / passive (`-l`), multi-hop pivots
-- Mutual **HMAC** preauth + optional **TLS** / WebSocket transport
+- Mutual **HMAC** preauth + optional **TLS** (raw TCP only; WebSocket not implemented)
 - **SOCKS5** on the controller — local tools exit via a chosen node
 - Per-stream **byte-window flow control** (no silent SOCKS drops; matching controller/agent required)
 - **Forward** (listen on agent) & **backward** (listen on controller)
@@ -239,7 +239,7 @@ Connect to `127.0.0.1:19142` **on the controller host**.
 | `-s` | Shared secret |
 | `-l` | Listen for agents `[ip]:port` |
 | `-c` | Optional active connect |
-| `-down` | `raw` / `ws` |
+| `-down` | `raw` only (`ws` rejected) |
 | `-tls-enable` | TLS on node links |
 | `-domain` | TLS SNI / WS domain |
 | `-heartbeat` | Heartbeat to first node |
@@ -254,7 +254,7 @@ Connect to `127.0.0.1:19142` **on the controller host**.
 | `-s` | Shared secret |
 | `-c` | Connect to parent / controller |
 | `-l` | Passive listen |
-| `-up` / `-down` | `raw` / `ws` |
+| `-up` / `-down` | `raw` only (`ws` rejected) |
 | `-tls-enable` / `-domain` | TLS |
 | `-reconnect` | Seconds (`0` = off) |
 | `-socks5-proxy` / `-socks5-proxyu` / `-socks5-proxyp` | Reach parent via SOCKS5 |

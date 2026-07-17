@@ -37,6 +37,10 @@ type Controller struct {
 
 	pendingDownloads map[string]*pendingDownload
 	downloadsMu      sync.Mutex
+
+	// acks correlates agent RES/READY with MCP start_* waiters.
+	acks   map[ackKey]chan bool
+	acksMu sync.Mutex
 }
 
 // NewController creates a new controller.
@@ -50,6 +54,7 @@ func NewController(opt *Options) *Controller {
 		backwardListeners: make(map[string]*BackwardListener),
 		socksServices:     make(map[string]*SocksService),
 		pendingDownloads:  make(map[string]*pendingDownload),
+		acks:              make(map[ackKey]chan bool),
 	}
 }
 
@@ -411,6 +416,7 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 			return
 		}
 		slog.Info("listen response", "uuid", uuid, "ok", res.OK)
+		c.signalAck(uuid, AckListen, res.OK == 1)
 
 	case protocol.CONNECTDONE:
 		res, ok := asMsg[*protocol.ConnectDone](message, "CONNECTDONE", uuid)
@@ -418,6 +424,7 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 			return
 		}
 		slog.Info("connect done", "uuid", uuid, "ok", res.OK)
+		c.signalAck(uuid, AckConnect, res.OK == 1)
 
 	case protocol.SOCKSREADY:
 		res, ok := asMsg[*protocol.SocksReady](message, "SOCKSREADY", uuid)
@@ -454,6 +461,7 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 			return
 		}
 		slog.Info("forward ready", "uuid", uuid, "ok", res.OK)
+		c.signalAck(uuid, AckForward, res.OK == 1)
 
 	case protocol.BACKWARDREADY:
 		res, ok := asMsg[*protocol.BackwardReady](message, "BACKWARDREADY", uuid)
