@@ -1,22 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="styx-mcp v3">
-  <!-- Geometric constellation: tighter, more technical -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="styx-mcp">
   <defs>
-    <linearGradient id="beam" x1="48" y1="200" x2="208" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#06B6D4"/>
-      <stop offset="100%" stop-color="#6366F1"/>
+    <linearGradient id="river" x1="48" y1="40" x2="208" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E1FF"/>
+      <stop offset="45%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#7B5CFF"/>
     </linearGradient>
+    <linearGradient id="riverSoft" x1="48" y1="40" x2="208" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E1FF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7B5CFF" stop-opacity="0.35"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <!-- outer ring hint -->
-  <circle cx="128" cy="128" r="104" fill="none" stroke="#E2E8F0" stroke-width="2"/>
-  <!-- main beam -->
-  <path d="M60 188 L128 68 L196 188" fill="none" stroke="url(#beam)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- cross link hops -->
-  <path d="M88 148 L168 148" fill="none" stroke="#0F172A" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
-  <!-- nodes -->
-  <circle cx="60" cy="188" r="22" fill="#0F172A"/>
-  <circle cx="128" cy="68" r="24" fill="#06B6D4"/>
-  <circle cx="128" cy="68" r="9" fill="#FFFFFF"/>
-  <circle cx="196" cy="188" r="22" fill="#0F172A"/>
-  <circle cx="88" cy="148" r="12" fill="#6366F1"/>
-  <circle cx="168" cy="148" r="12" fill="#6366F1"/>
+  <!-- soft outer circuit path -->
+  <path d="M168 36
+           C 110 28, 52 52, 52 100
+           C 52 136, 92 148, 128 160
+           C 172 176, 204 188, 204 220
+           C 204 248, 150 252, 96 236"
+        fill="none" stroke="url(#riverSoft)" stroke-width="6" stroke-linecap="round"
+        stroke-dasharray="2 10"/>
+  <!-- main S river -->
+  <path d="M172 44
+           C 118 34, 60 56, 60 102
+           C 60 134, 96 146, 128 158
+           C 168 172, 196 184, 196 216
+           C 196 242, 148 248, 100 234"
+        fill="none" stroke="url(#river)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"
+        filter="url(#glow)"/>
+  <!-- inner highlight channel -->
+  <path d="M168 48
+           C 120 40, 72 60, 72 102
+           C 72 130, 102 142, 128 154
+           C 162 166, 188 180, 188 214
+           C 188 236, 150 242, 110 230"
+        fill="none" stroke="#E0F7FF" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+  <!-- circuit nodes -->
+  <circle cx="172" cy="44" r="9" fill="#00E1FF"/>
+  <circle cx="172" cy="44" r="4" fill="#FFFFFF"/>
+  <circle cx="60" cy="102" r="8" fill="#38BDF8"/>
+  <circle cx="128" cy="158" r="11" fill="#7B5CFF"/>
+  <circle cx="128" cy="158" r="5" fill="#FFFFFF"/>
+  <circle cx="196" cy="216" r="8" fill="#818CF8"/>
+  <circle cx="100" cy="234" r="9" fill="#7B5CFF"/>
+  <circle cx="100" cy="234" r="4" fill="#FFFFFF"/>
+  <!-- satellite dots -->
+  <circle cx="196" cy="72" r="4" fill="#00E1FF" opacity="0.85"/>
+  <circle cx="88" cy="72" r="3.5" fill="#38BDF8" opacity="0.8"/>
+  <circle cx="164" cy="200" r="3.5" fill="#A78BFA" opacity="0.85"/>
+  <circle cx="48" cy="160" r="3" fill="#22D3EE" opacity="0.7"/>
+  <!-- tiny stems -->
+  <path d="M172 53 L172 68 M196 80 L188 92 M88 80 L72 92 M48 152 L56 140"
+        stroke="#7DD3FC" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
 </svg>

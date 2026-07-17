@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo-lockup.svg" alt="styx-mcp" width="420">
+  <img src="docs/images/logo-lockup.png" alt="styx-mcp" width="520">
 </p>
 
 <p align="center">
