@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="280" viewBox="0 0 920 280" role="img" aria-label="start_scan pipeline">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <filter id="sh2" x="-8%" y="-8%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <marker id="ar2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="920" height="280" rx="16" fill="url(#bg2)"/>
+  <text x="36" y="40" fill="#f8fafc" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18" font-weight="700">start_scan pipeline</text>
+  <text x="230" y="40" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13">agent-side recon · authorized environments only</text>
+
+  <!-- boxes -->
+  <g filter="url(#sh2)">
+    <rect x="36" y="80" width="140" height="88" rx="14" fill="#1e3a5f" stroke="#38bdf8" stroke-width="1.4"/>
+    <text x="106" y="118" text-anchor="middle" fill="#e0f2fe" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">targets</text>
+    <text x="106" y="140" text-anchor="middle" fill="#7dd3fc" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">IP · CIDR · list</text>
+  </g>
+
+  <g filter="url(#sh2)">
+    <rect x="216" y="80" width="160" height="88" rx="14" fill="#1e3a8a" stroke="#60a5fa" stroke-width="1.4"/>
+    <text x="296" y="112" text-anchor="middle" fill="#dbeafe" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">discover</text>
+    <text x="296" y="134" text-anchor="middle" fill="#93c5fd" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">ICMP ∪ TCP probe</text>
+    <text x="296" y="152" text-anchor="middle" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">progress: icmp_done / alive_n</text>
+  </g>
+
+  <g filter="url(#sh2)">
+    <rect x="416" y="80" width="150" height="88" rx="14" fill="#14532d" stroke="#4ade80" stroke-width="1.4"/>
+    <text x="491" y="112" text-anchor="middle" fill="#dcfce7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">port scan</text>
+    <text x="491" y="134" text-anchor="middle" fill="#86efac" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">alive hosts only</text>
+    <text x="491" y="152" text-anchor="middle" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">connect · SYN if root</text>
+  </g>
+
+  <g filter="url(#sh2)">
+    <rect x="606" y="80" width="130" height="88" rx="14" fill="#713f12" stroke="#fbbf24" stroke-width="1.4"/>
+    <text x="671" y="118" text-anchor="middle" fill="#fef3c7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">fingerprint</text>
+    <text x="671" y="140" text-anchor="middle" fill="#fcd34d" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">open ports only</text>
+  </g>
+
+  <g filter="url(#sh2)">
+    <rect x="776" y="80" width="110" height="88" rx="14" fill="#4c1d95" stroke="#a78bfa" stroke-width="1.4"/>
+    <text x="831" y="118" text-anchor="middle" fill="#ede9fe" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700">refs[]</text>
+    <text x="831" y="140" text-anchor="middle" fill="#c4b5fd" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">hints only</text>
+  </g>
+
+  <!-- arrows main -->
+  <path d="M176 124 L214 124" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+  <path d="M376 124 L414 124" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+  <path d="M566 124 L604 124" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+  <path d="M736 124 L774 124" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+
+  <!-- fallback branch -->
+  <path d="M296 168 L296 210 L491 210 L491 168" stroke="#f59e0b" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+  <rect x="318" y="196" width="150" height="28" rx="8" fill="#422006" stroke="#f59e0b" stroke-width="1"/>
+  <text x="393" y="214" text-anchor="middle" fill="#fcd34d" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11">alive=0 → fallback all + warnings</text>
+
+  <!-- phases -->
+  <text x="36" y="250" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Phases:</text>
+  <text x="90" y="250" fill="#38bdf8" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">discovering</text>
+  <text x="200" y="250" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">→</text>
+  <text x="220" y="250" fill="#4ade80" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">scanning</text>
+  <text x="300" y="250" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">→</text>
+  <text x="320" y="250" fill="#fbbf24" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">fingerprinting</text>
+  <text x="440" y="250" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">→</text>
+  <text x="460" y="250" fill="#a78bfa" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">done</text>
+</svg>

@@ -9,29 +9,9 @@
 
 > 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude / Grok 一套面向 AI Agent 的跳板网络，不必再开 admin 交互界面。
 
-```mermaid
-flowchart TB
-  subgraph op["操作机"]
-    LLM["LLM · Cursor · Claude · Grok"]
-    TOOLS["本机工具<br/>curl / 扫描器"]
-    MCP["MCP stdio"]
-    CTRL["controller"]
-    SOCKS["SOCKS5 · backward"]
-    LLM -->|"tools/call"| MCP --> CTRL
-    TOOLS --> SOCKS --> CTRL
-  end
-
-  subgraph net["远端 / 靶场网络"]
-    A0["agent<br/>入口"]
-    A1["agent<br/>跳板"]
-    TGT["内网目标"]
-    A0 <-->|"加密多跳"| A1
-    A1 -->|"出站流量 · start_scan"| TGT
-  end
-
-  CTRL <-->|"线协议"| A0
-  SOCKS -.->|"经 node_id"| A1
-```
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="styx-mcp 架构：LLM 与本机工具经 controller 连多级 agent" width="920">
+</p>
 
 ## 声明
 
@@ -179,49 +159,17 @@ make test
 
 `start_forward` **不能** 当成给本机用的 SOCKS。`start_scan` 也不是完整 fscan（无爆破/利用）。
 
-```mermaid
-flowchart LR
-  subgraph local["Controller 本机"]
-    CURL["curl / nmap"]
-    C["controller"]
-    L1[":10801 SOCKS"]
-    L2[":19142 backward"]
-  end
-  subgraph agents["Agent 节点"]
-    N0["node 入口"]
-    N1["node 跳板"]
-  end
-  subgraph lan["内网"]
-    H["10.x / 172.x"]
-  end
-
-  CURL --> L1 --> C
-  CURL --> L2 --> C
-  C <--> N0 <--> N1
-  L1 -.->|"start_socks"| N1
-  L2 -.->|"start_backward"| N1
-  N1 -->|"start_scan / 出站"| H
-  N0 -->|"start_forward 监听"| H
-```
+<p align="center">
+  <img src="docs/images/traffic-modes.svg" alt="start_socks / backward / forward / start_scan 怎么选" width="920">
+</p>
 
 ## 内网扫描（`start_scan`）
 
 在选中的 **agent** 上执行（流量从该节点出）。
 
-```mermaid
-flowchart LR
-  T["targets<br/>IP / CIDR"] --> D["探活<br/>ICMP ∪ TCP"]
-  D -->|"alive > 0"| P["端口扫描<br/>fast / normal / …"]
-  D -->|"alive = 0"| F["降级<br/>全目标 + warnings"]
-  F --> P
-  P -->|"仅 open"| FP["指纹"]
-  FP --> R["refs[] + interesting"]
-
-  style D fill:#1f6feb22,stroke:#1f6feb
-  style P fill:#23863622,stroke:#238636
-  style FP fill:#9e6a0322,stroke:#9e6a03
-  style R fill:#8957e522,stroke:#8957e5
-```
+<p align="center">
+  <img src="docs/images/scan-pipeline.svg" alt="start_scan 流水线：探活、端口、指纹、refs" width="920">
+</p>
 
 **探活（混合，默认开）：** **ICMP 成功 或** 任一 TCP probe 口 open → 判 alive。  
 若存活为 0，会 **降级扫描全部目标** 并写入 `warnings`（避免空结果被当成「网段没机器」）。
@@ -240,19 +188,7 @@ flowchart LR
 | `concurrency` | `200` | 上限 500 |
 | `timeout_ms` | `500` | 单次探测超时 |
 
-**阶段**（`get_task_status`）：
-
-```mermaid
-stateDiagram-v2
-  [*] --> discovering: start_scan
-  discovering --> scanning: 存活集合就绪
-  scanning --> fingerprinting: open 端口
-  fingerprinting --> done
-  discovering --> scanning: 降级扫全部
-  scanning --> done: fingerprint=false
-  done --> [*]
-```
-
+**阶段**（`get_task_status`）：`discovering` → `scanning` → `fingerprinting` → `done`。  
 探活中 `result.progress` 可能含 `stage`、`icmp_done`/`icmp_total`、`icmp_alive`、`alive_n`、`tcp_probes`。
 
 **同版本：** 改 SCAN\* 线协议后，controller 与 agent 须用 **同一 commit** 构建再联调。
