@@ -6,12 +6,11 @@ Track online agents as a multi-hop tree, expose stable numeric node IDs to MCP
 tools, and keep concurrent topology reads/writes consistent via a single task
 queue (`Topology.Do`). Offline nodes MUST leave sparse IDs without shifting
 other nodes' identities.
-
 ## Requirements
-
 ### Requirement: Online nodes are listable with numeric IDs
 The system SHALL expose every currently online agent with a numeric `node_id`
-usable by other MCP tools.
+usable by other MCP tools. When no agents are online, list APIs SHALL succeed
+with an empty node set (not an error).
 
 #### Scenario: Fresh agent appears in list
 - **WHEN** an agent completes join handshake with the controller
@@ -19,7 +18,8 @@ usable by other MCP tools.
 
 #### Scenario: Empty topology when no agents
 - **WHEN** the controller is running and no agents are connected
-- **THEN** `list_nodes` returns an empty online set without error
+- **THEN** `list_nodes` returns success with an empty `nodes` collection and
+  without treating emptiness as failure
 
 ### Requirement: Node IDs stay sparse after offline
 When a node goes offline, the system MUST remove it from the online set and MUST
@@ -46,3 +46,4 @@ node detail for operators without requiring a reconnect.
 #### Scenario: Set and read memo
 - **WHEN** an operator sets a memo on a valid `node_id`
 - **THEN** subsequent list/detail for that node includes the memo text
+

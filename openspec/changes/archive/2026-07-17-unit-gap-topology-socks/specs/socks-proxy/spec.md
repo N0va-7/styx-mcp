@@ -1,12 +1,5 @@
-# SOCKS and Port Forward Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Provide two complementary ways to push traffic through an agent: controller-side
-SOCKS5 (`start_socks`) for tools that run on the controller host, and agent-side
-listen+forward (`start_forward`) for a foothold port. These MUST NOT be confused
-with each other.
-## Requirements
 ### Requirement: SOCKS listens on the controller
 `start_socks` SHALL bind a SOCKS5 listener on the controller host at the given
 address and SHALL exit proxied connections via the selected online node.
@@ -21,21 +14,6 @@ address and SHALL exit proxied connections via the selected online node.
 - **THEN** the tool fails immediately with a clear "node not found" style error
   and does not bind a local listener for that request
 
-### Requirement: Forward listens on the agent
-`start_forward` SHALL instruct the selected agent to listen on `listen_address`
-and forward accepted connections to `target_address`. The controller host MUST
-NOT be required to bind `listen_address`.
-
-#### Scenario: Agent-side forward ready
-- **WHEN** `start_forward` is called with a valid online node and addresses the
-  agent can bind and dial
-- **THEN** the async task completes with `ready: true` only after the agent
-  acknowledges the forward is up
-
-#### Scenario: Not a local SOCKS substitute
-- **WHEN** an operator needs a SOCKS endpoint on the controller for local tools
-- **THEN** they MUST use `start_socks`, not `start_forward`
-
 ### Requirement: Bind and dial failures surface as task errors
 If the controller cannot bind SOCKS, or the agent rejects listen/forward, the
 system SHALL mark the async task failed with a readable error instead of leaving
@@ -46,4 +24,3 @@ registered for that node.
 - **WHEN** `start_socks` targets an address already in use on the controller
 - **THEN** the operation fails with a bind error and no SOCKS service remains
   registered for the requested node
-
