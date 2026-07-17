@@ -14,26 +14,39 @@ MCP 多级跳板：controller 走 stdio MCP，agent 在对端出流量。
 - `start_socks` 在 **controller 本机**听，流量经 `node_id` 出；`start_forward` 在 **agent** 上听，不是本机 SOCKS 替代品。
 - 布局：`cmd/{controller,agent}`、`pkg/mcp`、`pkg/controller`、`pkg/node`、`pkg/protocol`、`pkg/topology`（`Topology.Do`）。
 
+## OpenSpec（默认规范）
+
+一切功能、修复、测试补齐都按 OpenSpec 走，不另开一套标准。
+
+**契约**：`openspec/specs/`  
+`dev-workflow` · `topology` · `socks-proxy` · `mcp-async-tasks` · `transport`  
+（新领域用 kebab-case 加目录，不要只写在代码注释里。）
+
+**流程**（fix / feat / 补测 同一套）：
+
+1. **对齐**：先读相关 `openspec/specs/<capability>/spec.md`，标出命中的 Requirement / Scenario；没有就先补场景再写代码。
+2. **开 change**：`openspec/changes/<kebab-name>/`  
+   - 一律：`proposal.md` + `tasks.md`  
+   - 行为/契约有变：`specs/<capability>/spec.md`（ADDED / MODIFIED / …）  
+   - 协议、多包、跨进程：再加 `design.md`  
+3. **实现与测试**：`tasks.md` 逐项打勾；测试对应 Scenario（单测 / MCP+真 agent）；风险高再加深。  
+4. **校验**：`openspec validate --all`，相关包 `go test` 绿。  
+5. **收尾**：有 delta 则 `openspec archive <name>` 合回 `specs/`；commit 说明可带 change 名。
+
+**体量**：proposal 可短（Why / What / Capabilities / Non-goals）；tasks 可少，但不能跳过 change。纯文案且不动行为时，仍写一条 proposal 说明「无 requirement 变更」。
+
+**命令**：`openspec list` · `openspec list --specs` · `openspec validate --all` · `openspec archive <name>`
+
 ## Testing instructions
 
-- 对改动相关包跑 `go test ./...`，修到绿。
-- **改什么测什么**：正常路径 + 一两个边界；深度跟风险走。
-- 拓扑：列表 / 详情 / memo；下线后稀疏 ID；并发读不串。
-- listen / 启动：能绑定；端口占用要失败且错误可读。
-- SOCKS：经代理能到目标；本机直连内网可能不通。
-- 纯逻辑优先单测；跨进程行为用 MCP + 真 agent。
-- 全链路靶场（入口 → agent → 代理 → 内网）可选，大改或用户要求时再做，不是每次固定剧本。
-- 为本次改动补测，即使没人点名要求。
+- 测试是 OpenSpec Scenario 的落地，不是旁路清单。
+- 对 change 涉及的包跑 `go test ./...`，修到绿；**改什么测什么**，深度跟风险走。
+- 单测优先覆盖纯逻辑；跨进程用 MCP + 真 agent 对应 async / SOCKS / transport 场景。
+- 全链路靶场（入口 → agent → 代理 → 内网）在 transport/socks 相关 change 或用户要求时做。
+- 发现行为与 spec 不一致：先改 spec（或确认 bug）再改代码，避免静默漂移。
 
 ## PR instructions
 
-- 相关检查通过再 commit；用户没说就不要 `git push`。
-- 说明：`fix:` / `feat:` / `refactor:` / `docs:`，短标题，必要时写 why。
+- `openspec validate --all` 与相关测试通过再 commit；用户没说就不要 `git push`。
+- 说明：`fix:` / `feat:` / `refactor:` / `docs:`，短标题；行为变更写清 why / 对应 capability。
 - 不要提交 `release/`、密钥、本地 `.grok/config.toml`。
-
-## OpenSpec (medium+ only)
-
-- 行为契约：`openspec/specs/`（topology / socks-proxy / mcp-async-tasks / transport）。
-- **改需求**（新能力、破坏兼容、协议语义）时：`openspec/changes/<name>/` 走 proposal → specs delta → design → tasks，合入后 archive 回 `specs/`。
-- **小修 / 单测 / 文案** 不必起 change；仍以本文件的 Dev/Testing 为准。
-- 校验：`openspec validate --specs`；有进行中的 change 时再 `openspec validate --all`。

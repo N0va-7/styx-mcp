@@ -23,21 +23,36 @@ context: |
   - Wire transport "raw" is implemented; websocket is rejected (not a silent stub).
   - Controller and agent must be built from the same commit after protocol changes.
 
-  Conventions: conventional commits (fix:/feat:/refactor:/docs:). Test what you
-  change (unit + MCP/real-agent when cross-process). AGENTS.md is ops tips;
-  openspec/specs is behavioral contract. Use OpenSpec changes for medium+ deltas
-  that alter requirements; skip for trivial fixes.
+  Workflow (default for ALL work — features, fixes, and test backfill):
+  1. Read matching openspec/specs/<capability>/spec.md; name Requirement/Scenario.
+     If missing, add scenario (or ADDED requirement) before or with the code change.
+  2. Create openspec/changes/<kebab-name>/ with proposal.md + tasks.md always.
+     Add specs/ delta when behavior/contract changes; design.md for protocol,
+     multi-package, or cross-process work.
+  3. Implement tasks; tests map to Scenarios (unit and/or MCP + real agent).
+  4. openspec validate --all; go test on touched packages.
+  5. openspec archive when specs delta is done; conventional commit.
+
+  AGENTS.md is ops + this workflow. openspec/specs is the behavioral contract.
+  Do not treat small fixes as exempt from OpenSpec — slim proposal/tasks are OK,
+  skipping the change folder is not.
 
 rules:
   proposal:
-    - Keep under ~400 words; focus on why and capability impact
-    - Always include Non-goals
-    - Map each capability to an existing openspec/specs/<name> or new kebab-case name
+    - Always create a change for fix/feat/test work; slim is fine, skip is not
+    - Keep under ~400 words; Why / What Changes / Capabilities / Non-goals
+    - Map Capabilities to openspec/specs/<name> or new kebab-case names
+    - If no requirement change (pure bugfix matching existing scenario), say so
+      under Modified Capabilities as empty and note the scenario being hardened
   specs:
     - Normative text MUST use SHALL or MUST
     - Every requirement needs at least one #### Scenario with WHEN/THEN
     - Prefer behavior over package/file names
+    - New tests that pin behavior SHOULD appear as scenarios if not already listed
   design:
-    - Note protocol compatibility (same-commit controller/agent) when wire format changes
+    - Required when wire protocol, crypto, framing, or multi-hop path changes
+    - Note same-commit controller/agent rebuild when wire format changes
   tasks:
-    - Each task should name the package and the test approach (unit vs MCP e2e)
+    - Each task names package and how it maps to a Scenario (unit vs MCP e2e)
+    - Include openspec validate --all and go test as final checks
+    - Keep tasks small enough to check off independently
