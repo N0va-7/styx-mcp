@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120" role="img" aria-label="styx-mcp">
+  <!-- mark -->
+  <g transform="translate(8,12) scale(0.38)">
+    <path d="M56 72
+             C 96 72, 104 112, 128 128
+             C 152 144, 160 184, 200 184"
+          fill="none" stroke="#0F172A" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="56" cy="72" r="22" fill="#0F172A"/>
+    <circle cx="56" cy="72" r="9" fill="#FFFFFF"/>
+    <circle cx="128" cy="128" r="24" fill="#06B6D4"/>
+    <circle cx="128" cy="128" r="10" fill="#FFFFFF"/>
+    <circle cx="200" cy="184" r="22" fill="#0F172A"/>
+    <circle cx="200" cy="184" r="9" fill="#FFFFFF"/>
+  </g>
+  <!-- wordmark -->
+  <text x="118" y="74"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif"
+        font-size="48" font-weight="700" fill="#0F172A" letter-spacing="-1.2">styx-mcp</text>
+  <text x="120" y="98"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif"
+        font-size="14" font-weight="500" fill="#64748B" letter-spacing="0.3">MCP-native multi-hop jump network</text>
+</svg>

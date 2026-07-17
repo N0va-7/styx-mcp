@@ -1,11 +1,15 @@
-# styx-mcp
+<p align="center">
+  <img src="docs/images/logo-lockup.svg" alt="styx-mcp" width="420">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![MCP](https://img.shields.io/badge/MCP-stdio-black)](https://modelcontextprotocol.io/)
-[![GitHub stars](https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social)](https://github.com/N0va-7/styx-mcp/stargazers)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-stdio-black" alt="MCP"></a>
+  <a href="https://github.com/N0va-7/styx-mcp/stargazers"><img src="https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social" alt="GitHub stars"></a>
+</p>
 
-**English** | [简体中文](README_ZH.md)
+<p align="center"><strong>English</strong> · <a href="README_ZH.md">简体中文</a></p>
 
 > Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude / Grok an AI-native jump network without a separate admin TUI.
 

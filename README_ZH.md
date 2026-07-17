@@ -1,11 +1,15 @@
-# styx-mcp
+<p align="center">
+  <img src="docs/images/logo-lockup.svg" alt="styx-mcp" width="420">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![MCP](https://img.shields.io/badge/MCP-stdio-black)](https://modelcontextprotocol.io/)
-[![GitHub stars](https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social)](https://github.com/N0va-7/styx-mcp/stargazers)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-stdio-black" alt="MCP"></a>
+  <a href="https://github.com/N0va-7/styx-mcp/stargazers"><img src="https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social" alt="GitHub stars"></a>
+</p>
 
-[English](README.md) | **简体中文**
+<p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
 > 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude / Grok 一套面向 AI Agent 的跳板网络，不必再开 admin 交互界面。
 
