@@ -14,13 +14,15 @@ In passive mode the controller MUST bind its agent listen address during
 in use). The process MUST NOT proceed to serve MCP as if networking were up.
 
 #### Scenario: Port already in use
-- **WHEN** another process holds `STYX_LISTEN` / configured listen address
-- **THEN** controller start fails with a readable bind/port-in-use error and does
-  not open a successful MCP session on that broken config
+- **WHEN** another process holds the configured listen address and
+  `Controller.Start()` is called in passive mode
+- **THEN** `Start()` returns a readable bind/port-in-use error (including a
+  STYX_LISTEN-oriented hint when applicable) and does not report success
 
 #### Scenario: Free port binds
-- **WHEN** the listen address is free
-- **THEN** `Start()` returns nil and agents can connect on that address
+- **WHEN** the listen address is free and `Controller.Start()` is called in
+  passive mode
+- **THEN** `Start()` returns nil so agents can connect on that address
 
 ### Requirement: Raw transport is the supported path
 The system SHALL implement the `raw` upstream/downstream transport for
