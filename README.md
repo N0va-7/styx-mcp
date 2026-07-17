@@ -11,7 +11,7 @@
 
 <p align="center"><strong>English</strong> · <a href="README_ZH.md">简体中文</a></p>
 
-> Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude / Grok an AI-native jump network without a separate admin TUI.
+> Orchestrate multi-hop nodes, tunnels, and intranet recon via **MCP tools**
 
 <p align="center">
   <img src="docs/images/architecture.png" alt="styx-mcp architecture: LLM and local tools via controller to multi-hop agents" width="920">

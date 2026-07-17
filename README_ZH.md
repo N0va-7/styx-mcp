@@ -11,7 +11,7 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-> 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude / Grok 一套面向 AI Agent 的跳板网络，不必再开 admin 交互界面。
+> 用 **MCP 工具** 编排多跳节点、隧道与内网侦察
 
 <p align="center">
   <img src="docs/images/architecture.png" alt="styx-mcp 架构：LLM 与本机工具经 controller 连多级 agent" width="920">
