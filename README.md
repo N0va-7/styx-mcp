@@ -9,17 +9,35 @@
 
 > Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude / Grok an AI-native jump network without a separate admin TUI.
 
-```text
-LLM (Cursor)  --MCP/stdio-->  controller  <-->  agent  <-->  agent …
-                                   |                 |
-                              SOCKS / backward    exit traffic
+```mermaid
+flowchart TB
+  subgraph op["Operator host"]
+    LLM["LLM · Cursor · Claude · Grok"]
+    TOOLS["Local tools<br/>curl / scanners"]
+    MCP["MCP stdio"]
+    CTRL["controller"]
+    SOCKS["SOCKS5 · backward"]
+    LLM -->|"tools/call"| MCP --> CTRL
+    TOOLS --> SOCKS --> CTRL
+  end
+
+  subgraph net["Remote / lab network"]
+    A0["agent<br/>entry"]
+    A1["agent<br/>pivot"]
+    TGT["Internal targets"]
+    A0 <-->|"encrypted hop"| A1
+    A1 -->|"exit traffic · start_scan"| TGT
+  end
+
+  CTRL <-->|"wire protocol"| A0
+  SOCKS -.->|"via node_id"| A1
 ```
 
 ## Disclaimer
 
 > **Authorized use only.** Use only on systems you own or have explicit written permission to test (labs, CTF / exam ranges, RoE-covered engagements). Unauthorized use is illegal. You are solely responsible for how you use this software.
 
-**Please read this README (especially [SOCKS vs forward vs backward](#socks-vs-forward-vs-backward)) before use.**
+**Please read this README (especially [SOCKS vs forward vs backward vs scan](#socks-vs-forward-vs-backward-vs-scan)) before use.**
 
 ## Why styx-mcp?
 
@@ -40,18 +58,18 @@ Built for **agent-driven** ops (MCP-native control plane). Multi-hop topology dr
 - Per-stream **byte-window flow control** (no silent SOCKS drops; matching controller/agent required)
 - **Forward** (listen on agent) & **backward** (listen on controller)
 - **Async `start_cmd`** (non-interactive `sh -c`, returns `task_id`)
+- **Async `start_scan`** — intranet recon from a chosen agent (discover → port scan → light fingerprint + vuln **refs**, not exploits)
 - **Async `pull_file`** / `upload_file` (task + local path; not interactive shell)
-- **Upload** files to nodes (path traversal sanitized)
-- Async tasks + `get_task_status`
+- Async tasks + `get_task_status` (phases + progressive `result.progress` for long scans)
 - Cross-compile: Linux / Windows / macOS (`make build-all`)
 
 <details>
 <summary><strong>Not included yet</strong></summary>
 
 - Interactive remote shell
-- Download from node → controller
 - SOCKS username/password
 - Interactive admin TUI (by design: MCP is the control plane)
+- Full fscan-style brute force / POC execution
 
 </details>
 
@@ -60,6 +78,7 @@ Built for **agent-driven** ops (MCP-native control plane). Multi-hop topology dr
 - [Quick start](#quick-start)
 - [Cursor MCP setup](#cursor-mcp-setup)
 - [MCP tools](#mcp-tools)
+- [Intranet scan (`start_scan`)](#intranet-scan-start_scan)
 - [Examples](#examples)
 - [CLI flags](#cli-flags)
 - [Security notes](#security-notes)
@@ -143,20 +162,106 @@ Never commit real secrets into public configs.
 | `upload_file` | Upload | Controller → agent |
 | `pull_file` | Pull file to controller | Agent → controller path |
 | `start_cmd` | Non-interactive one-shot | Agent `sh -c` (async `task_id`) |
+| `start_scan` | Intranet port scan + light fingerprint | **Agent** network stack (async `task_id`) |
 | `get_task_status` | Poll async work | — |
 | `shutdown_node` | Kill node | — |
 
 Long-running calls return `task_id` → poll with `get_task_status`.
 
-### SOCKS vs forward vs backward
+### SOCKS vs forward vs backward vs scan
 
 | You want… | Use |
 | :--- | :--- |
 | `curl` / scanners on the **controller host** into an internal net | `start_socks` |
 | One **controller** port → one internal `ip:port` | `start_backward` |
 | A port **on the foothold** that dials elsewhere | `start_forward` |
+| Structured open ports / fingerprints **from the agent** (no local SOCKS needed) | `start_scan` |
 
-`start_forward` is **not** a drop-in for local SOCKS.
+`start_forward` is **not** a drop-in for local SOCKS. `start_scan` is not a full fscan clone (no brute/exploit).
+
+```mermaid
+flowchart LR
+  subgraph local["Controller host"]
+    CURL["curl / nmap"]
+    C["controller"]
+    L1[":10801 SOCKS"]
+    L2[":19142 backward"]
+  end
+  subgraph agents["Agents"]
+    N0["node_id entry"]
+    N1["node_id pivot"]
+  end
+  subgraph lan["LAN"]
+    H["10.x / 172.x"]
+  end
+
+  CURL --> L1 --> C
+  CURL --> L2 --> C
+  C <--> N0 <--> N1
+  L1 -.->|"start_socks"| N1
+  L2 -.->|"start_backward"| N1
+  N1 -->|"start_scan / exit"| H
+  N0 -->|"start_forward listen"| H
+```
+
+## Intranet scan (`start_scan`)
+
+Runs on the selected **agent** (traffic exits that host).
+
+```mermaid
+flowchart LR
+  T["targets<br/>IP / CIDR"] --> D["discover<br/>ICMP ∪ TCP probe"]
+  D -->|"alive > 0"| P["port scan<br/>fast / normal / …"]
+  D -->|"alive = 0"| F["fallback<br/>all hosts + warnings"]
+  F --> P
+  P -->|"open only"| FP["fingerprint"]
+  FP --> R["refs[] + interesting"]
+
+  style D fill:#1f6feb22,stroke:#1f6feb
+  style P fill:#23863622,stroke:#238636
+  style FP fill:#9e6a0322,stroke:#9e6a03
+  style R fill:#8957e522,stroke:#8957e5
+```
+
+**Discover (hybrid, default on):** host is alive if **ICMP succeeds OR** any TCP probe port is open.  
+If zero hosts are alive, the job **falls back** to scanning all targets and sets `warnings` (avoids a silent empty result).
+
+**Port method:** `auto` (default) uses **SYN** when the agent has raw IPv4 TCP (root / CAP_NET_RAW on Linux), otherwise **TCP connect**. Force with `method=connect` or `method=syn`.
+
+| Arg | Default | Notes |
+| :--- | :--- | :--- |
+| `node_id` | required | Exit via this agent |
+| `targets` | required | IPv4 IP / CIDR / comma list |
+| `mode` | `fast` | `fast` \| `normal` \| `full` \| `custom` (`full` is expensive) |
+| `ports` | — | Required for `custom` (`22,80,8000-8100`) |
+| `fingerprint` | `true` | Fingerprint open ports only |
+| `discover` | `true` | Hybrid alive probe first |
+| `method` | `auto` | `auto` \| `connect` \| `syn` |
+| `concurrency` | `200` | Max 500 |
+| `timeout_ms` | `500` | Per-probe timeout |
+
+**Phases** (via `get_task_status`):
+
+```mermaid
+stateDiagram-v2
+  [*] --> discovering: start_scan
+  discovering --> scanning: alive set ready
+  scanning --> fingerprinting: open ports
+  fingerprinting --> done
+  discovering --> scanning: fallback all hosts
+  scanning --> done: fingerprint=false
+  done --> [*]
+```
+
+While discovering, `result.progress` may include `stage`, `icmp_done` / `icmp_total`, `icmp_alive`, `alive_n`, `tcp_probes`.
+
+**Rebuild note:** controller and agent must be built from the **same commit** after protocol changes (SCAN\*).
+
+Lab helper (authorized ranges only; uses port **19139** so it does not steal MCP’s `:19137`):
+
+```bash
+STYX_SECRET=… STYX_CALLBACK=<attacker-ip> ./scripts/lab-scan-e2e.sh
+```
 
 ## Examples
 
@@ -229,6 +334,32 @@ Connect to `127.0.0.1:19142` **on the controller host**.
 
 </details>
 
+<details>
+<summary><strong>Intranet scan</strong></summary>
+
+```json
+{
+  "name": "start_scan",
+  "arguments": {
+    "node_id": 0,
+    "targets": "172.16.23.0/24",
+    "mode": "fast",
+    "discover": true,
+    "method": "auto",
+    "fingerprint": true
+  }
+}
+```
+
+```json
+{ "name": "get_task_status", "arguments": { "task_id": "start_scan-1" } }
+```
+
+Useful result fields: `stats` (`hosts_alive`, `discover_ms`, `method`, `fallback`, …), `open[]`, `summary.interesting[]`, optional `warnings[]`.  
+`refs` are **hints** (CVE/advisory links), not confirmed vulnerabilities.
+
+</details>
+
 ## CLI flags
 
 <details>
@@ -273,16 +404,19 @@ Controller and agents must share the **same secret** (and matching TLS/WS option
 - Bind SOCKS to `127.0.0.1` unless you intentionally expose it.
 - Upload paths allow absolute destinations but reject `..`; max single-file transfer is 32 MiB.
 - MCP stdio logging is **off** by default; set `STYX_MCP_LOG=/path` only when debugging (may contain secrets).
+- `start_scan` is recon-only (connect/SYN + light fingerprint + advisory links). Do not treat refs as confirmed vulns. Rebuild controller **and** agent together after SCAN\* protocol changes.
 
 ## Project layout
 
 ```text
 cmd/controller/     controller + MCP entrypoint
 cmd/agent/          agent entrypoint
-scripts/            Cursor MCP wrapper
-pkg/controller/     control plane, SOCKS / backward
+scripts/            MCP wrapper, lab-scan-e2e.sh, lab_scan_smoke.go
+pkg/controller/     control plane, SOCKS / backward / scan tasks
 pkg/mcp/            MCP tools
-pkg/node/           agent handlers
+pkg/node/           agent handlers (incl. scan job)
+pkg/scan/           targets, discover, connect/SYN port check
+pkg/fingerprint/    light fingerprint + vuln ref table
 pkg/protocol/       wire protocol
 pkg/share/preauth/  HMAC mutual preauth
 ```

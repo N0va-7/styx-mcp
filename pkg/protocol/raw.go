@@ -280,6 +280,12 @@ func unmarshalPayload(msgType uint16, data []byte) (interface{}, error) {
 		mess = new(ExecReq)
 	case EXECRES:
 		mess = new(ExecRes)
+	case SCANREQ:
+		mess = new(ScanReq)
+	case SCANPROG:
+		mess = new(ScanProg)
+	case SCANRES:
+		mess = new(ScanRes)
 	case FORWARDSTART:
 		mess = new(ForwardStart)
 	case FORWARDREADY:

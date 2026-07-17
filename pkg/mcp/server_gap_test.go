@@ -91,3 +91,80 @@ func TestHandleStartSocksUnknownNode(t *testing.T) {
 	}
 	ln.Close()
 }
+
+func TestHandleStartScanUnknownNode(t *testing.T) {
+	c := controller.NewController(&controller.Options{Secret: "t", Listen: "127.0.0.1:0"})
+	go c.Topology.Run()
+	s := NewServer(c)
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"node_id": float64(99),
+		"targets": "127.0.0.1",
+		"mode":    "fast",
+	}
+	res, err := s.handleStartScan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal([]byte(toolText(t, res)), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["success"] != false {
+		t.Fatalf("want failure, body=%v", body)
+	}
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "not found") {
+		t.Fatalf("error=%q", errMsg)
+	}
+}
+
+func TestHandleStartScanCustomEmptyPorts(t *testing.T) {
+	c := controller.NewController(&controller.Options{Secret: "t", Listen: "127.0.0.1:0"})
+	go c.Topology.Run()
+	s := NewServer(c)
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"node_id": float64(0),
+		"targets": "127.0.0.1",
+		"mode":    "custom",
+		"ports":   "",
+	}
+	res, err := s.handleStartScan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal([]byte(toolText(t, res)), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["success"] != false {
+		t.Fatalf("want failure for custom empty ports, body=%v", body)
+	}
+}
+
+func TestHandleStartScanInvalidTargets(t *testing.T) {
+	c := controller.NewController(&controller.Options{Secret: "t", Listen: "127.0.0.1:0"})
+	go c.Topology.Run()
+	s := NewServer(c)
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"node_id": float64(0),
+		"targets": "not-an-ip",
+		"mode":    "fast",
+	}
+	res, err := s.handleStartScan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal([]byte(toolText(t, res)), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["success"] != false {
+		t.Fatalf("want failure, body=%v", body)
+	}
+}

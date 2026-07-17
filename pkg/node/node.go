@@ -510,6 +510,12 @@ func (n *Node) handleLocalMessage(header *protocol.Header, message interface{}) 
 			return
 		}
 		n.handleExecReq(req)
+	case protocol.SCANREQ:
+		req, ok := asMsg[*protocol.ScanReq](message, "SCANREQ")
+		if !ok {
+			return
+		}
+		n.handleScanReq(req)
 	case protocol.SHUTDOWN:
 		n.ParentConn.Close()
 		slog.Info("shutdown received")

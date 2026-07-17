@@ -57,6 +57,9 @@ const (
 	SOCKSTCPACK
 	EXECREQ
 	EXECRES
+	SCANREQ
+	SCANPROG
+	SCANRES
 )
 
 // Identity and handshake strings are styx-native (10-char IDs fit the wire
@@ -271,6 +274,52 @@ type ExecRes struct {
 	Stdout     []byte
 	StderrLen  uint32
 	Stderr     []byte
+}
+
+// ScanReq asks an agent to run an intranet scan (+ optional fingerprint).
+// Targets is a comma-separated IP/CIDR list. Mode is fast|normal|full|custom.
+// Ports is required for custom (e.g. "22,80,8000-8100"); ignored for other modes.
+// Fingerprint: 1 enable, 0 ports-only. Payload limits enforced by agent.
+// Discover: 0=default on, 1=on, 2=off (alive probe then port-scan only live hosts).
+// Method: empty/auto|connect|syn (auto uses SYN when agent has raw TCP capability).
+type ScanReq struct {
+	TaskIDLen      uint16
+	TaskID         string
+	TargetsLen     uint32
+	Targets        string
+	ModeLen        uint16
+	Mode           string
+	PortsLen       uint16
+	Ports          string
+	Fingerprint    uint16
+	Concurrency    uint32
+	TimeoutMs      uint32
+	MaxHosts       uint32
+	MaxDurationSec uint32
+	Discover       uint16
+	MethodLen      uint16
+	Method         string
+}
+
+// ScanProg is optional progress (phase + partial JSON stats/hits).
+type ScanProg struct {
+	TaskIDLen  uint16
+	TaskID     string
+	PhaseLen   uint16
+	Phase      string
+	PayloadLen uint32
+	Payload    []byte
+}
+
+// ScanRes is the final scan result (JSON payload) or error.
+type ScanRes struct {
+	TaskIDLen  uint16
+	TaskID     string
+	OK         uint16
+	ErrorLen   uint16
+	Error      string
+	PayloadLen uint32
+	Payload    []byte
 }
 
 // ForwardStart starts a port forward.

@@ -517,6 +517,20 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 		}
 		c.handleExecRes(res)
 
+	case protocol.SCANPROG:
+		prog, ok := asMsg[*protocol.ScanProg](message, "SCANPROG", uuid)
+		if !ok {
+			return
+		}
+		c.handleScanProg(prog)
+
+	case protocol.SCANRES:
+		res, ok := asMsg[*protocol.ScanRes](message, "SCANRES", uuid)
+		if !ok {
+			return
+		}
+		c.handleScanRes(res, uuid)
+
 	case protocol.HEARTBEAT:
 		// no-op
 

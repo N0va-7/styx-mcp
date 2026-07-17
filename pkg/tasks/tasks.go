@@ -111,6 +111,25 @@ func (m *Manager) SetResult(id string, result map[string]interface{}) (*Task, bo
 	return task, true
 }
 
+// MergeResult shallow-merges keys into task.Result without changing status.
+// Used for progressive observability (e.g. scan discover progress).
+func (m *Manager) MergeResult(id string, partial map[string]interface{}) (*Task, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	task, ok := m.tasks[id]
+	if !ok {
+		return nil, false
+	}
+	if task.Result == nil {
+		task.Result = make(map[string]interface{})
+	}
+	for k, v := range partial {
+		task.Result[k] = v
+	}
+	task.UpdatedAt = time.Now()
+	return task, true
+}
+
 // SetError marks a task as failed with an error message.
 func (m *Manager) SetError(id string, err error) (*Task, bool) {
 	m.mu.Lock()

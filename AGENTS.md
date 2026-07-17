@@ -10,16 +10,17 @@ MCP 多级跳板：controller 走 stdio MCP，agent 在对端出流量。
 - MCP 入口：`scripts/styx-mcp-wrapper.sh`。配置模板：`.grok/config.toml.example`。
 - 密钥：`STYX_SECRET` 或 gitignore 的 `.grok/styx.secret`，不要提交真实密钥。
 - agent 默认连 `19137`（`STYX_LISTEN`）。该端口同时只跑一个 controller；占用就换地址或先释放。
-- 改握手 / 加密 / 组帧后，controller 与 agent 用**同一 commit** 构建再联调。
+- 改握手 / 加密 / 组帧（含 SCAN*）后，controller 与 agent 用**同一 commit** 构建再联调。
 - `start_socks` 在 **controller 本机**听，流量经 `node_id` 出；`start_forward` 在 **agent** 上听，不是本机 SOCKS 替代品。
-- 布局：`cmd/{controller,agent}`、`pkg/mcp`、`pkg/controller`、`pkg/node`、`pkg/protocol`、`pkg/topology`（`Topology.Do`）。
+- `start_scan` 在 **agent** 上扫：默认 **混合探活**（ICMP 尽力 + TCP probe，任一成功即 alive），再只扫存活主机；探活 0 台则自动降级扫全部并 `warnings`。`method=auto` 有 raw TCP 用 SYN，否则 connect。`full` 很重。
+- 布局：`cmd/{controller,agent}`、`pkg/mcp`、`pkg/controller`、`pkg/node`、`pkg/protocol`、`pkg/scan`、`pkg/fingerprint`、`pkg/topology`（`Topology.Do`）。
 
 ## OpenSpec（默认规范）
 
 一切功能、修复、测试补齐都按 OpenSpec 走，不另开一套标准。
 
 **契约**：`openspec/specs/`  
-`dev-workflow` · `topology` · `socks-proxy` · `mcp-async-tasks` · `transport`  
+`dev-workflow` · `topology` · `socks-proxy` · `mcp-async-tasks` · `transport` · `intranet-scan` · `file-transfer`  
 （新领域用 kebab-case 加目录，不要只写在代码注释里。）
 
 **流程**（fix / feat / 补测 同一套）：

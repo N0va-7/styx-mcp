@@ -106,3 +106,67 @@ func TestConstructDestructRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestScanReqRoundTrip(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		r := NewDownMsg(c2, "unit-test-secret", ControllerUUID)
+		h, payload, err := DestructMessage(r)
+		if err != nil {
+			done <- err
+			return
+		}
+		if h.MessageType != SCANREQ {
+			done <- io.ErrUnexpectedEOF
+			return
+		}
+		req, ok := payload.(*ScanReq)
+		if !ok || req.TaskID != "start_scan-1" || req.Mode != "fast" || req.Fingerprint != 1 {
+			done <- io.ErrClosedPipe
+			return
+		}
+		if req.Targets != "10.0.0.0/24" || req.Discover != 1 || req.Method != "auto" {
+			done <- io.ErrUnexpectedEOF
+			return
+		}
+		done <- nil
+	}()
+
+	s := NewDownMsg(c1, "unit-test-secret", ControllerUUID)
+	header := &Header{
+		Version:     1,
+		Sender:      ControllerUUID,
+		Accepter:    ControllerUUID,
+		MessageType: SCANREQ,
+		Route:       NoRoute,
+	}
+	req := &ScanReq{
+		TaskIDLen:   uint16(len("start_scan-1")),
+		TaskID:      "start_scan-1",
+		TargetsLen:  uint32(len("10.0.0.0/24")),
+		Targets:     "10.0.0.0/24",
+		ModeLen:     uint16(len("fast")),
+		Mode:        "fast",
+		PortsLen:    0,
+		Ports:       "",
+		Fingerprint: 1,
+		Concurrency: 50,
+		TimeoutMs:   500,
+		Discover:    1,
+		MethodLen:   uint16(len("auto")),
+		Method:      "auto",
+	}
+	if err := ConstructMessage(s, header, req, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SendMessage(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

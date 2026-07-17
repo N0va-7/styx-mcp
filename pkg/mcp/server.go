@@ -16,6 +16,7 @@ import (
 
 	"styx-mcp/pkg/controller"
 	"styx-mcp/pkg/protocol"
+	"styx-mcp/pkg/scan"
 	"styx-mcp/pkg/tasks"
 	"styx-mcp/pkg/topology"
 )
@@ -151,6 +152,23 @@ func (s *Server) registerTools() {
 		mcp.WithNumber("timeout_sec", mcp.Description("Timeout in seconds (default 30, max 120)")),
 		mcp.WithString("workdir", mcp.Description("Optional working directory on the node")),
 	), s.handleExec)
+
+	// Intranet scan from agent: discover alive hosts, then port-scan (SYN if root, else connect).
+	// Authorized envs only. Refs are hints not confirmed vulns. full mode is expensive.
+	// Rebuild agent+controller together after protocol changes.
+	s.mcpserver.AddTool(mcp.NewTool("start_scan",
+		mcp.WithNumber("node_id", mcp.Required(), mcp.Description("Numeric node ID (scan exits via this agent)")),
+		mcp.WithString("targets", mcp.Required(), mcp.Description("IP, CIDR, or comma-separated list (IPv4)")),
+		mcp.WithString("mode", mcp.Description("fast|normal|full|custom (default fast). full is costly — hard-capped.")),
+		mcp.WithString("ports", mcp.Description("Required for custom: e.g. 22,80,8000-8100")),
+		mcp.WithBoolean("fingerprint", mcp.Description("Fingerprint open ports only (default true)")),
+		mcp.WithBoolean("discover", mcp.Description("Hybrid alive probe (ICMP best-effort OR TCP probes), then port-scan live hosts; 0 alive falls back to all targets (default true)")),
+		mcp.WithString("method", mcp.Description("auto|connect|syn (default auto: SYN if agent has raw TCP/root, else connect)")),
+		mcp.WithNumber("concurrency", mcp.Description("Workers (default 200, max 500)")),
+		mcp.WithNumber("timeout_ms", mcp.Description("Per-probe timeout ms (default 500, max 5000); discover uses min(this,400)")),
+		mcp.WithNumber("max_hosts", mcp.Description("Max expanded hosts (default 1024, hard max 4096)")),
+		mcp.WithNumber("max_duration_sec", mcp.Description("Wall-clock seconds (default 300; full default 900)")),
+	), s.handleStartScan)
 
 	s.mcpserver.AddTool(mcp.NewTool("get_task_status",
 		mcp.WithString("task_id", mcp.Required(), mcp.Description("Task ID")),
@@ -807,6 +825,135 @@ func (s *Server) handleExec(ctx context.Context, request mcp.CallToolRequest) (*
 		s.controller.TaskManager.SetPhase(task.ID, "exec")
 		if err := s.controller.StartExec(res.UUID, task.ID, command, workdir, timeoutSec); err != nil {
 			s.controller.TaskManager.SetPhase(task.ID, "exec-error")
+			s.controller.TaskManager.SetError(task.ID, err)
+		}
+	}()
+
+	return s.success(map[string]interface{}{"success": true, "task_id": task.ID}), nil
+}
+
+func (s *Server) handleStartScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := getArgs(request)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	nodeID, err := getNodeID(args)
+	if err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	targets, _ := args["targets"].(string)
+	targets = strings.TrimSpace(targets)
+	if targets == "" {
+		return s.failure("targets must be a non-empty string (IP, CIDR, or list)"), nil
+	}
+
+	mode, _ := args["mode"].(string)
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "fast"
+	}
+	switch mode {
+	case "fast", "normal", "full", "custom":
+	default:
+		return s.failure("mode must be fast|normal|full|custom"), nil
+	}
+
+	ports, _ := args["ports"].(string)
+	if mode == "custom" && strings.TrimSpace(ports) == "" {
+		return s.failure("custom mode requires ports (e.g. 22,80,8000-8100)"), nil
+	}
+
+	fingerprint := true
+	if v, ok := args["fingerprint"].(bool); ok {
+		fingerprint = v
+	}
+	discover := true
+	if v, ok := args["discover"].(bool); ok {
+		discover = v
+	}
+	method, _ := args["method"].(string)
+	method = strings.ToLower(strings.TrimSpace(method))
+	if method == "" {
+		method = scan.MethodAuto
+	}
+	if _, err := scan.ResolveMethod(method); err != nil {
+		return s.failure(err.Error()), nil
+	}
+
+	var concurrency, timeoutMs, maxHosts, maxDurationSec uint32
+	if v, ok := args["concurrency"].(float64); ok && v > 0 {
+		concurrency = uint32(v)
+	}
+	if v, ok := args["timeout_ms"].(float64); ok && v > 0 {
+		timeoutMs = uint32(v)
+	}
+	if v, ok := args["max_hosts"].(float64); ok && v > 0 {
+		maxHosts = uint32(v)
+	}
+	if v, ok := args["max_duration_sec"].(float64); ok && v > 0 {
+		maxDurationSec = uint32(v)
+	}
+
+	// Pre-validate args before node lookup so bad input fails clearly.
+	maxHostsCheck := int(maxHosts)
+	if maxHostsCheck <= 0 {
+		maxHostsCheck = scan.DefaultMaxHosts
+	}
+	if _, err := scan.ParseTargets(targets, maxHostsCheck); err != nil {
+		return s.failure(err.Error()), nil
+	}
+	if mode == "custom" {
+		if _, err := scan.ParsePorts(ports); err != nil {
+			return s.failure(err.Error()), nil
+		}
+	}
+
+	res := s.controller.Topology.Do(&topology.Task{Mode: topology.GetUUID, UUIDNum: nodeID})
+	if res.UUID == "" {
+		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
+	}
+
+	fpFlag := uint16(0)
+	if fingerprint {
+		fpFlag = 1
+	}
+	// Discover: 0 default on, 1 on, 2 off
+	discFlag := uint16(1)
+	if !discover {
+		discFlag = 2
+	}
+
+	task := s.controller.TaskManager.Create("start_scan")
+	nodeUUID := res.UUID
+	initialPhase := "discovering"
+	if !discover {
+		initialPhase = "scanning"
+	}
+	go func() {
+		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, initialPhase)
+		req := &protocol.ScanReq{
+			TaskIDLen:      uint16(len(task.ID)),
+			TaskID:         task.ID,
+			TargetsLen:     uint32(len(targets)),
+			Targets:        targets,
+			ModeLen:        uint16(len(mode)),
+			Mode:           mode,
+			PortsLen:       uint16(len(ports)),
+			Ports:          ports,
+			Fingerprint:    fpFlag,
+			Concurrency:    concurrency,
+			TimeoutMs:      timeoutMs,
+			MaxHosts:       maxHosts,
+			MaxDurationSec: maxDurationSec,
+			Discover:       discFlag,
+			MethodLen:      uint16(len(method)),
+			Method:         method,
+		}
+		if err := s.controller.StartScan(nodeUUID, req); err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "send-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 		}
 	}()

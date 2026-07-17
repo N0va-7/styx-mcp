@@ -25,3 +25,33 @@ func TestSetPhaseAndToMap(t *testing.T) {
 		// SetResult only sets phase to done if empty
 	}
 }
+
+func TestMergeResultKeepsRunning(t *testing.T) {
+	m := NewManager()
+	task := m.Create("start_scan")
+	m.UpdateStatus(task.ID, Running)
+	m.SetPhase(task.ID, "discovering")
+	if _, ok := m.MergeResult(task.ID, map[string]interface{}{
+		"progress": map[string]interface{}{"stage": "icmp", "icmp_done": 16, "alive_n": 1},
+	}); !ok {
+		t.Fatal("merge")
+	}
+	got, _ := m.Get(task.ID)
+	if got.Status != Running {
+		t.Fatalf("status=%s want running", got.Status)
+	}
+	if got.Phase != "discovering" {
+		t.Fatalf("phase=%s", got.Phase)
+	}
+	prog, ok := got.Result["progress"].(map[string]interface{})
+	if !ok || prog["stage"] != "icmp" {
+		t.Fatalf("progress=%v", got.Result["progress"])
+	}
+	// Merge again without clobbering sibling keys.
+	m.MergeResult(task.ID, map[string]interface{}{"progress": map[string]interface{}{"stage": "icmp_done", "icmp_done": 254}})
+	got, _ = m.Get(task.ID)
+	prog, _ = got.Result["progress"].(map[string]interface{})
+	if prog["stage"] != "icmp_done" {
+		t.Fatalf("progress=%v", prog)
+	}
+}
