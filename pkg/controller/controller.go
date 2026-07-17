@@ -346,16 +346,17 @@ func (c *Controller) handleNode(conn net.Conn, isFirst bool) {
 	})
 
 	c.Topology.Do(&topology.Task{
-		Mode:     topology.UpdateDetail,
-		UUID:     uuid,
-		UserName: info.Username,
-		HostName: info.Hostname,
-		Memo:     info.Memo,
+		Mode:       topology.UpdateDetail,
+		UUID:       uuid,
+		UserName:   info.Username,
+		HostName:   info.Hostname,
+		Memo:       info.Memo,
+		LocalAddrs: utils.SplitAddrs(info.LocalAddrs),
 	})
 
 	c.Topology.Do(&topology.Task{Mode: topology.Calculate})
 
-	slog.Info("node online", "uuid", uuid, "ip", conn.RemoteAddr().String())
+	slog.Info("node online", "uuid", uuid, "peer", conn.RemoteAddr().String(), "local_addrs", info.LocalAddrs)
 
 	// Start read loop.
 	c.readLoop(uuid, conn)
@@ -388,11 +389,12 @@ func (c *Controller) handleMessage(uuid string, header *protocol.Header, message
 			return
 		}
 		c.Topology.Do(&topology.Task{
-			Mode:     topology.UpdateDetail,
-			UUID:     info.UUID,
-			UserName: info.Username,
-			HostName: info.Hostname,
-			Memo:     info.Memo,
+			Mode:       topology.UpdateDetail,
+			UUID:       info.UUID,
+			UserName:   info.Username,
+			HostName:   info.Hostname,
+			Memo:       info.Memo,
+			LocalAddrs: utils.SplitAddrs(info.LocalAddrs),
 		})
 
 	case protocol.CHILDUUIDREQ:

@@ -6,9 +6,7 @@ Long-running control actions (listen, connect child, SOCKS, forward) return a
 `task_id` immediately over MCP stdio, then complete asynchronously. Clients MUST
 be able to observe success (`ready: true`) or failure without false "healthy"
 signals when the agent never acknowledged.
-
 ## Requirements
-
 ### Requirement: start tools return task_id promptly
 `start_listener`, `connect_node`, `start_socks`, and `start_forward` SHALL return
 success with a `task_id` without blocking the MCP request on agent completion.
@@ -43,3 +41,14 @@ request so a fast agent response cannot be lost to a race.
 #### Scenario: Fast agent ACK still completes
 - **WHEN** the agent responds with success immediately after receiving the request
 - **THEN** the waiter still receives the ACK and the task can complete successfully
+
+### Requirement: Tasks expose phase while running
+Async tasks SHALL record a short `phase` string while in progress (and may keep
+the last phase on completion). `get_task_status` SHALL include `phase` so clients
+can distinguish bind / wait-ack / transfer / exec stages.
+
+#### Scenario: Upload reports transfer phase
+- **WHEN** an upload_file task is sending file slices
+- **THEN** get_task_status shows status running (or done) and a phase such as
+  `sending` or `stat` rather than an empty phase for the whole lifetime
+

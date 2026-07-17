@@ -177,6 +177,10 @@ type MyInfo struct {
 	Hostname    string
 	MemoLen     uint64
 	Memo        string
+	// LocalAddrs is a comma-separated list of non-loopback IPv4 addresses
+	// observed on the agent host (may be empty).
+	LocalAddrsLen uint64
+	LocalAddrs    string
 }
 
 // MyMemo updates a node memo.
@@ -332,10 +336,12 @@ type FileStatRes struct {
 	OK uint16
 }
 
-// FileData carries a file chunk.
+// FileData carries a file chunk (0-based SliceIndex, SliceTotal >= 1).
 type FileData struct {
-	DataLen uint64
-	Data    []byte
+	SliceIndex uint32
+	SliceTotal uint32
+	DataLen    uint64
+	Data       []byte
 }
 
 // FileErr reports a file transfer error.

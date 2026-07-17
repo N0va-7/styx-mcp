@@ -204,14 +204,20 @@ func (s *Server) handleListNodes(ctx context.Context, request mcp.CallToolReques
 	nodes := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
 		node := e.Node
+		local := node.LocalAddrs
+		if local == nil {
+			local = []string{}
+		}
 		nodes = append(nodes, map[string]interface{}{
-			"id":       e.ID,
-			"uuid":     node.UUID,
-			"ip":       node.CurrentIP,
-			"hostname": node.CurrentHostname,
-			"user":     node.CurrentUser,
-			"memo":     node.Memo,
-			"children": node.ChildrenUUID,
+			"id":          e.ID,
+			"uuid":        node.UUID,
+			"ip":          node.CurrentIP, // controller-observed peer (compat)
+			"peer_ip":     node.CurrentIP,
+			"local_addrs": local,
+			"hostname":    node.CurrentHostname,
+			"user":        node.CurrentUser,
+			"memo":        node.Memo,
+			"children":    node.ChildrenUUID,
 		})
 	}
 
@@ -234,15 +240,21 @@ func (s *Server) handleGetNodeDetail(ctx context.Context, request mcp.CallToolRe
 		return s.failure(fmt.Sprintf("node %d not found", nodeID)), nil
 	}
 
+	local := node.LocalAddrs
+	if local == nil {
+		local = []string{}
+	}
 	return s.success(map[string]interface{}{
-		"success":  true,
-		"id":       nodeID,
-		"uuid":     node.UUID,
-		"ip":       node.CurrentIP,
-		"hostname": node.CurrentHostname,
-		"user":     node.CurrentUser,
-		"memo":     node.Memo,
-		"children": node.ChildrenUUID,
+		"success":     true,
+		"id":          nodeID,
+		"uuid":        node.UUID,
+		"ip":          node.CurrentIP,
+		"peer_ip":     node.CurrentIP,
+		"local_addrs": local,
+		"hostname":    node.CurrentHostname,
+		"user":        node.CurrentUser,
+		"memo":        node.Memo,
+		"children":    node.ChildrenUUID,
 	}), nil
 }
 
@@ -349,6 +361,7 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "wait-ack")
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
@@ -364,13 +377,16 @@ func (s *Server) handleStartListener(ctx context.Context, request mcp.CallToolRe
 			return s.controller.SendToNode(nodeUUID, header, req)
 		})
 		if err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "send-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
 		if !ok {
+			s.controller.TaskManager.SetPhase(task.ID, "rejected")
 			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected listen on %s", address))
 			return
 		}
+		s.controller.TaskManager.SetPhase(task.ID, "ready")
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
@@ -407,6 +423,7 @@ func (s *Server) handleConnectNode(ctx context.Context, request mcp.CallToolRequ
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "wait-ack")
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
@@ -421,13 +438,16 @@ func (s *Server) handleConnectNode(ctx context.Context, request mcp.CallToolRequ
 			return s.controller.SendToNode(nodeUUID, header, req)
 		})
 		if err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "send-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
 		if !ok {
+			s.controller.TaskManager.SetPhase(task.ID, "rejected")
 			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected connect to %s", address))
 			return
 		}
+		s.controller.TaskManager.SetPhase(task.ID, "ready")
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
@@ -463,10 +483,13 @@ func (s *Server) handleStartSocks(ctx context.Context, request mcp.CallToolReque
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "bind-local")
 		if err := s.controller.StartSocks(res.UUID, address); err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "bind-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
+		s.controller.TaskManager.SetPhase(task.ID, "ready")
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
 			"node_id": nodeID,
 			"address": address,
@@ -509,6 +532,7 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "wait-ack")
 		header := &protocol.Header{
 			Version:     1,
 			Sender:      protocol.ControllerUUID,
@@ -525,18 +549,21 @@ func (s *Server) handleStartForward(ctx context.Context, request mcp.CallToolReq
 			return s.controller.SendToNode(nodeUUID, header, req)
 		})
 		if err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "send-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
 		if !ok {
+			s.controller.TaskManager.SetPhase(task.ID, "rejected")
 			s.controller.TaskManager.SetError(task.ID, fmt.Errorf("agent rejected forward %s -> %s", listenAddress, targetAddress))
 			return
 		}
+		s.controller.TaskManager.SetPhase(task.ID, "ready")
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
-			"node_id":         nodeID,
-			"listen_address":  listenAddress,
-			"target_address":  targetAddress,
-			"ready":           true,
+			"node_id":        nodeID,
+			"listen_address": listenAddress,
+			"target_address": targetAddress,
+			"ready":          true,
 		})
 	}()
 
@@ -612,7 +639,7 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 	if err != nil {
 		return s.failure(fmt.Sprintf("read local file failed: %v", err)), nil
 	}
-	const maxUpload = 32 << 20
+	const maxUpload = 64 << 20
 	if len(data) > maxUpload {
 		return s.failure(fmt.Sprintf("local file too large: %d bytes (max %d)", len(data), maxUpload)), nil
 	}
@@ -626,6 +653,17 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "stat")
+
+		const chunkSize = 512 << 10 // 512 KiB
+		total := len(data)
+		slices := total / chunkSize
+		if total%chunkSize != 0 || total == 0 {
+			slices++
+		}
+		if total == 0 {
+			slices = 1
+		}
 
 		// Send FILESTATREQ.
 		statHeader := &protocol.Header{
@@ -637,35 +675,49 @@ func (s *Server) handleUploadFile(ctx context.Context, request mcp.CallToolReque
 		statReq := &protocol.FileStatReq{
 			FilenameLen: uint32(len(remotePath)),
 			Filename:    remotePath,
-			FileSize:    uint64(len(data)),
-			SliceNum:    1,
+			FileSize:    uint64(total),
+			SliceNum:    uint64(slices),
 		}
 		if err := s.controller.SendToNode(res.UUID, statHeader, statReq); err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "stat-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 			return
 		}
 
-		// Send single FILEDATA slice.
-		dataHeader := &protocol.Header{
-			Version:     1,
-			Sender:      protocol.ControllerUUID,
-			Accepter:    res.UUID,
-			MessageType: protocol.FILEDATA,
-		}
-		dataReq := &protocol.FileData{
-			DataLen: uint64(len(data)),
-			Data:    data,
-		}
-		if err := s.controller.SendToNode(res.UUID, dataHeader, dataReq); err != nil {
-			s.controller.TaskManager.SetError(task.ID, err)
-			return
+		s.controller.TaskManager.SetPhase(task.ID, "sending")
+		for i := 0; i < slices; i++ {
+			start := i * chunkSize
+			end := start + chunkSize
+			if end > total {
+				end = total
+			}
+			chunk := data[start:end]
+			dataHeader := &protocol.Header{
+				Version:     1,
+				Sender:      protocol.ControllerUUID,
+				Accepter:    res.UUID,
+				MessageType: protocol.FILEDATA,
+			}
+			dataReq := &protocol.FileData{
+				SliceIndex: uint32(i),
+				SliceTotal: uint32(slices),
+				DataLen:    uint64(len(chunk)),
+				Data:       chunk,
+			}
+			if err := s.controller.SendToNode(res.UUID, dataHeader, dataReq); err != nil {
+				s.controller.TaskManager.SetPhase(task.ID, "send-error")
+				s.controller.TaskManager.SetError(task.ID, fmt.Errorf("slice %d/%d: %w", i+1, slices, err))
+				return
+			}
 		}
 
+		s.controller.TaskManager.SetPhase(task.ID, "done")
 		s.controller.TaskManager.SetResult(task.ID, map[string]interface{}{
-			"node_id":    nodeID,
-			"local_path": localPath,
+			"node_id":     nodeID,
+			"local_path":  localPath,
 			"remote_path": remotePath,
-			"bytes":      len(data),
+			"bytes":       total,
+			"slices":      slices,
 		})
 	}()
 
@@ -700,7 +752,9 @@ func (s *Server) handleDownloadFile(ctx context.Context, request mcp.CallToolReq
 	task := s.controller.TaskManager.Create("pull_file")
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "request")
 		if err := s.controller.StartDownload(res.UUID, task.ID, remotePath, localPath); err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "request-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 		}
 	}()
@@ -750,7 +804,9 @@ func (s *Server) handleExec(ctx context.Context, request mcp.CallToolRequest) (*
 	task := s.controller.TaskManager.Create("start_cmd")
 	go func() {
 		s.controller.TaskManager.UpdateStatus(task.ID, tasks.Running)
+		s.controller.TaskManager.SetPhase(task.ID, "exec")
 		if err := s.controller.StartExec(res.UUID, task.ID, command, workdir, timeoutSec); err != nil {
+			s.controller.TaskManager.SetPhase(task.ID, "exec-error")
 			s.controller.TaskManager.SetError(task.ID, err)
 		}
 	}()

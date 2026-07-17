@@ -27,10 +27,12 @@ type SocksService struct {
 }
 
 type socksStream struct {
-	conn  net.Conn
-	send  *socksflow.Window
-	inbox *socksflow.ByteQueue
-	once  sync.Once
+	conn       net.Conn
+	send       *socksflow.Window
+	inbox      *socksflow.ByteQueue
+	once       sync.Once
+	remoteOnce sync.Once
+	remoteDone chan struct{} // closed when agent signals FIN
 }
 
 func (ss *socksStream) close() {
@@ -38,7 +40,12 @@ func (ss *socksStream) close() {
 		ss.send.Close()
 		ss.inbox.Close()
 		ss.conn.Close()
+		ss.remoteOnce.Do(func() { close(ss.remoteDone) })
 	})
+}
+
+func (ss *socksStream) markRemoteDone() {
+	ss.remoteOnce.Do(func() { close(ss.remoteDone) })
 }
 
 // StartSocks listens on the controller and forwards SOCKS5 traffic via the node.
@@ -169,26 +176,32 @@ func (s *SocksService) Stop() {
 func (s *SocksService) handleLocalConn(conn net.Conn) {
 	seq := atomic.AddUint64(&s.seqGen, 1)
 	ss := &socksStream{
-		conn:  conn,
-		send:  socksflow.NewWindow(socksflow.InitialWindow),
-		inbox: socksflow.NewByteQueue(socksflow.InitialWindow),
+		conn:       conn,
+		send:       socksflow.NewWindow(socksflow.InitialWindow),
+		inbox:      socksflow.NewByteQueue(socksflow.InitialWindow),
+		remoteDone: make(chan struct{}),
 	}
 
 	s.mu.Lock()
 	s.seqConn[seq] = ss
 	s.mu.Unlock()
 
-	go s.drainInbox(seq, ss)
-
-	defer func() {
-		s.sendSocksFin(seq)
-		s.removeConn(seq)
+	// Drain remote→local for the lifetime of the stream (including after local EOF).
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		s.drainInbox(seq, ss)
 	}()
 
+	// Local → remote: on EOF do not FIN yet — keep reverse path open so HTTP
+	// responses can finish after the client half-closes its write side.
 	buf := make([]byte, 32*1024)
 	for {
 		select {
 		case <-s.stopCh:
+			ss.inbox.Close()
+			<-drainDone
+			s.removeConn(seq)
 			return
 		default:
 		}
@@ -196,9 +209,15 @@ func (s *SocksService) handleLocalConn(conn net.Conn) {
 		nr, err := conn.Read(buf)
 		if nr > 0 {
 			if err := ss.send.Acquire(uint64(nr)); err != nil {
+				ss.inbox.Close()
+				<-drainDone
+				s.removeConn(seq)
 				return
 			}
 			if err := s.sendSocksData(seq, buf[:nr]); err != nil {
+				ss.inbox.Close()
+				<-drainDone
+				s.removeConn(seq)
 				return
 			}
 		}
@@ -206,9 +225,24 @@ func (s *SocksService) handleLocalConn(conn net.Conn) {
 			if err != io.EOF {
 				slog.Debug("socks local read closed", "seq", seq, "error", err)
 			}
-			return
+			break
 		}
 	}
+
+	// Wait until agent FINs (or timeout/stop), then let drain finish remaining bytes.
+	// Closing the inbox only after remoteDone ensures in-flight response is written
+	// before we tear down; never CloseWrite before drain completes.
+	select {
+	case <-ss.remoteDone:
+	case <-time.After(5 * time.Minute):
+		slog.Debug("socks wait remote done timeout", "seq", seq)
+		ss.inbox.Close()
+	case <-s.stopCh:
+		ss.inbox.Close()
+	}
+
+	<-drainDone
+	s.removeConn(seq)
 }
 
 func (s *SocksService) drainInbox(seq uint64, ss *socksStream) {
@@ -218,9 +252,9 @@ func (s *SocksService) drainInbox(seq uint64, ss *socksStream) {
 			return
 		}
 		if _, err := ss.conn.Write(chunk); err != nil {
-			slog.Warn("socks local write failed", "seq", seq, "error", err)
-			ss.close()
-			s.removeConn(seq)
+			slog.Debug("socks local write closed", "seq", seq, "error", err)
+			// Unblock handleLocalConn if it is still waiting on remote FIN.
+			ss.markRemoteDone()
 			return
 		}
 		s.sendSocksAck(seq, uint64(len(chunk)))
@@ -244,7 +278,6 @@ func (s *SocksService) handleData(seq uint64, data []byte) {
 	}
 	if err := ss.inbox.Push(data); err != nil {
 		slog.Warn("socks inbox push failed", "seq", seq, "error", err)
-		s.sendSocksFin(seq)
 		s.removeConn(seq)
 	}
 }
@@ -260,7 +293,17 @@ func (s *SocksService) handleAck(seq uint64, credit uint64) {
 }
 
 func (s *SocksService) handleFin(seq uint64) {
-	s.removeConn(seq)
+	s.mu.RLock()
+	ss, ok := s.seqConn[seq]
+	s.mu.RUnlock()
+	if !ok {
+		return
+	}
+	// Signal remote completion and close inbox so drainInbox can finish any
+	// already-buffered chunks, then exit. Do not CloseWrite here: that races
+	// with drain and truncates the HTTP response (empty reply / broken pipe).
+	ss.markRemoteDone()
+	ss.inbox.Close()
 }
 
 func (s *SocksService) removeConn(seq uint64) {
@@ -271,6 +314,8 @@ func (s *SocksService) removeConn(seq uint64) {
 	}
 	s.mu.Unlock()
 	if ok {
+		// Tell agent we are done (idempotent if already closed).
+		s.sendSocksFin(seq)
 		ss.close()
 	}
 }

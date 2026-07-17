@@ -21,6 +21,7 @@ type Task struct {
 	ID        string
 	Type      string
 	Status    Status
+	Phase     string // short stage label while running (e.g. "sending", "wait-ack")
 	Result    map[string]interface{}
 	Error     string
 	CreatedAt time.Time
@@ -80,6 +81,19 @@ func (m *Manager) UpdateStatus(id string, status Status) (*Task, bool) {
 	return task, true
 }
 
+// SetPhase records a short in-progress stage label (e.g. "wait-ack", "sending").
+func (m *Manager) SetPhase(id string, phase string) (*Task, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	task, ok := m.tasks[id]
+	if !ok {
+		return nil, false
+	}
+	task.Phase = phase
+	task.UpdatedAt = time.Now()
+	return task, true
+}
+
 // SetResult stores the result of a completed task.
 func (m *Manager) SetResult(id string, result map[string]interface{}) (*Task, bool) {
 	m.mu.Lock()
@@ -90,6 +104,9 @@ func (m *Manager) SetResult(id string, result map[string]interface{}) (*Task, bo
 	}
 	task.Result = result
 	task.Status = Done
+	if task.Phase == "" {
+		task.Phase = "done"
+	}
 	task.UpdatedAt = time.Now()
 	return task, true
 }
@@ -106,6 +123,9 @@ func (m *Manager) SetError(id string, err error) (*Task, bool) {
 	if err != nil {
 		task.Error = err.Error()
 	}
+	if task.Phase == "" {
+		task.Phase = "failed"
+	}
 	task.UpdatedAt = time.Now()
 	return task, true
 }
@@ -116,6 +136,7 @@ func (t *Task) ToMap() map[string]interface{} {
 		"id":         t.ID,
 		"type":       t.Type,
 		"status":     string(t.Status),
+		"phase":      t.Phase,
 		"result":     t.Result,
 		"error":      t.Error,
 		"created_at": t.CreatedAt.Format(time.RFC3339),

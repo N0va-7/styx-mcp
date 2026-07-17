@@ -39,9 +39,11 @@ type Node struct {
 
 // PendingFile tracks an in-progress file upload for this node.
 type PendingFile struct {
-	filename string
-	fileSize uint64
-	sliceNum uint64
+	filename  string
+	fileSize  uint64
+	sliceNum  uint64
+	nextSlice uint32
+	received  uint64
 }
 
 // ChildConn holds a connection to a child node.
@@ -314,6 +316,7 @@ func (n *Node) achieveUUID(conn net.Conn) string {
 
 func (n *Node) sendMyInfo() {
 	hostname, username := utils.GetSystemInfo()
+	localAddrs := utils.JoinAddrs(utils.LocalIPv4Addrs())
 
 	header := &protocol.Header{
 		Version:     1,
@@ -325,14 +328,16 @@ func (n *Node) sendMyInfo() {
 	}
 
 	info := &protocol.MyInfo{
-		UUIDLen:     uint16(len(n.UUID)),
-		UUID:        n.UUID,
-		UsernameLen: uint64(len(username)),
-		Username:    username,
-		HostnameLen: uint64(len(hostname)),
-		Hostname:    hostname,
-		MemoLen:     uint64(len(n.Memo)),
-		Memo:        n.Memo,
+		UUIDLen:       uint16(len(n.UUID)),
+		UUID:          n.UUID,
+		UsernameLen:   uint64(len(username)),
+		Username:      username,
+		HostnameLen:   uint64(len(hostname)),
+		Hostname:      hostname,
+		MemoLen:       uint64(len(n.Memo)),
+		Memo:          n.Memo,
+		LocalAddrsLen: uint64(len(localAddrs)),
+		LocalAddrs:    localAddrs,
 	}
 
 	sMessage := protocol.NewUpMsg(n.ParentConn, n.Options.Secret, n.UUID)

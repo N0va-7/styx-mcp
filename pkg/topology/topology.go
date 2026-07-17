@@ -36,8 +36,11 @@ type Node struct {
 	ChildrenUUID    []string
 	CurrentUser     string
 	CurrentHostname string
-	CurrentIP       string
-	Memo            string
+	// CurrentIP is the TCP peer address as observed by the controller (may be NAT).
+	CurrentIP string
+	// LocalAddrs are IPv4 addresses reported by the agent (LAN/VPN interfaces).
+	LocalAddrs []string
+	Memo       string
 }
 
 // NewNode creates a topology node.
@@ -71,6 +74,7 @@ type Task struct {
 	HostName   string
 	UserName   string
 	Memo       string
+	LocalAddrs []string
 	IsFirst    bool
 	Reply      chan *Result
 }
@@ -291,6 +295,9 @@ func (t *Topology) updateDetail(task *Task) {
 	t.nodes[num].CurrentUser = task.UserName
 	t.nodes[num].CurrentHostname = task.HostName
 	t.nodes[num].Memo = task.Memo
+	if task.LocalAddrs != nil {
+		t.nodes[num].LocalAddrs = append([]string{}, task.LocalAddrs...)
+	}
 	t.reply(task, &Result{})
 }
 
