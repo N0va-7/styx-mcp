@@ -1,0 +1,45 @@
+# MCP Async Tasks Specification
+
+## Purpose
+
+Long-running control actions (listen, connect child, SOCKS, forward) return a
+`task_id` immediately over MCP stdio, then complete asynchronously. Clients MUST
+be able to observe success (`ready: true`) or failure without false "healthy"
+signals when the agent never acknowledged.
+
+## Requirements
+
+### Requirement: start tools return task_id promptly
+`start_listener`, `connect_node`, `start_socks`, and `start_forward` SHALL return
+success with a `task_id` without blocking the MCP request on agent completion.
+
+#### Scenario: Immediate ack with task id
+- **WHEN** a client calls one of the start_* tools with valid arguments
+- **THEN** the tool response includes `success: true` and a non-empty `task_id`
+  before the agent finishes the work
+
+### Requirement: ready only after agent or local success
+For agent-side start actions (`start_listener`, `connect_node`, `start_forward`),
+the task result SHALL include `ready: true` only after a positive ACK from the
+agent (listen/connect/forward ready). For `start_socks`, `ready: true` SHALL
+mean the controller has successfully bound the SOCKS listener.
+
+#### Scenario: Listener ready after ACK
+- **WHEN** `start_listener` is sent and the agent binds successfully
+- **THEN** task status becomes completed with `ready: true` and the listen address
+
+#### Scenario: Agent rejects listen
+- **WHEN** the agent cannot bind the requested listen address
+- **THEN** the task ends in error (rejected), not `ready: true`
+
+#### Scenario: ACK timeout
+- **WHEN** no ACK arrives within the controller's wait timeout
+- **THEN** the task ends in error and MUST NOT report `ready: true`
+
+### Requirement: Waiter armed before send
+The controller SHALL arm the ACK waiter before (or atomically with) sending the
+request so a fast agent response cannot be lost to a race.
+
+#### Scenario: Fast agent ACK still completes
+- **WHEN** the agent responds with success immediately after receiving the request
+- **THEN** the waiter still receives the ACK and the task can complete successfully

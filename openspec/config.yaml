@@ -1,0 +1,43 @@
+schema: spec-driven
+
+# Shown to AI when creating OpenSpec artifacts (proposal / design / tasks).
+context: |
+  styx-mcp: MCP multi-hop proxy. Controller speaks stdio MCP; agents join over
+  the wire and exit traffic on the far side. Inspired by Stowaway (MIT) for
+  multi-hop topology; wire identity, crypto, and MCP tools are this repo's.
+
+  Stack: Go (see go.mod). Layout: cmd/{controller,agent}, pkg/{mcp,controller,
+  node,protocol,topology,tasks,transport}. Topology mutations go through
+  Topology.Do (serialized).
+
+  Defaults: agent connects to STYX_LISTEN (default :19137). One controller per
+  listen port. Secret via STYX_SECRET or .grok/styx.secret (never commit).
+
+  Critical product facts:
+  - start_socks: SOCKS5 listens on the controller host; traffic exits via node_id.
+  - start_forward: listen is on the agent, not a local SOCKS substitute.
+  - start_listener / connect_node / start_forward wait for agent ACK before
+    marking task ready:true (AfterSendWait).
+  - Controller Start() hard-fails if passive bind fails (MCP must not look healthy
+    with no listen).
+  - Wire transport "raw" is implemented; websocket is rejected (not a silent stub).
+  - Controller and agent must be built from the same commit after protocol changes.
+
+  Conventions: conventional commits (fix:/feat:/refactor:/docs:). Test what you
+  change (unit + MCP/real-agent when cross-process). AGENTS.md is ops tips;
+  openspec/specs is behavioral contract. Use OpenSpec changes for medium+ deltas
+  that alter requirements; skip for trivial fixes.
+
+rules:
+  proposal:
+    - Keep under ~400 words; focus on why and capability impact
+    - Always include Non-goals
+    - Map each capability to an existing openspec/specs/<name> or new kebab-case name
+  specs:
+    - Normative text MUST use SHALL or MUST
+    - Every requirement needs at least one #### Scenario with WHEN/THEN
+    - Prefer behavior over package/file names
+  design:
+    - Note protocol compatibility (same-commit controller/agent) when wire format changes
+  tasks:
+    - Each task should name the package and the test approach (unit vs MCP e2e)

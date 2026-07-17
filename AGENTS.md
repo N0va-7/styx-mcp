@@ -30,3 +30,10 @@ MCP 多级跳板：controller 走 stdio MCP，agent 在对端出流量。
 - 相关检查通过再 commit；用户没说就不要 `git push`。
 - 说明：`fix:` / `feat:` / `refactor:` / `docs:`，短标题，必要时写 why。
 - 不要提交 `release/`、密钥、本地 `.grok/config.toml`。
+
+## OpenSpec (medium+ only)
+
+- 行为契约：`openspec/specs/`（topology / socks-proxy / mcp-async-tasks / transport）。
+- **改需求**（新能力、破坏兼容、协议语义）时：`openspec/changes/<name>/` 走 proposal → specs delta → design → tasks，合入后 archive 回 `specs/`。
+- **小修 / 单测 / 文案** 不必起 change；仍以本文件的 Dev/Testing 为准。
+- 校验：`openspec validate --specs`；有进行中的 change 时再 `openspec validate --all`。
