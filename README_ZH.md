@@ -10,7 +10,7 @@
 > 用 **MCP 工具** 控制的多级代理 —— 给 Cursor / Claude / Grok 一套面向 AI Agent 的跳板网络，不必再开 admin 交互界面。
 
 <p align="center">
-  <img src="docs/images/architecture.svg" alt="styx-mcp 架构：LLM 与本机工具经 controller 连多级 agent" width="920">
+  <img src="docs/images/architecture.png" alt="styx-mcp 架构：LLM 与本机工具经 controller 连多级 agent" width="920">
 </p>
 
 ## 声明
@@ -160,7 +160,7 @@ make test
 `start_forward` **不能** 当成给本机用的 SOCKS。`start_scan` 也不是完整 fscan（无爆破/利用）。
 
 <p align="center">
-  <img src="docs/images/traffic-modes.svg" alt="start_socks / backward / forward / start_scan 怎么选" width="920">
+  <img src="docs/images/traffic-modes.png" alt="start_socks / backward / forward / start_scan 怎么选" width="920">
 </p>
 
 ## 内网扫描（`start_scan`）
@@ -168,7 +168,7 @@ make test
 在选中的 **agent** 上执行（流量从该节点出）。
 
 <p align="center">
-  <img src="docs/images/scan-pipeline.svg" alt="start_scan 流水线：探活、端口、指纹、refs" width="920">
+  <img src="docs/images/scan-pipeline.png" alt="start_scan 流水线：探活、端口、指纹、refs" width="920">
 </p>
 
 **探活（混合，默认开）：** **ICMP 成功 或** 任一 TCP probe 口 open → 判 alive。  

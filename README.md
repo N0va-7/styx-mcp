@@ -10,7 +10,7 @@
 > Multi-hop proxy **controlled by MCP tools** — give Cursor / Claude / Grok an AI-native jump network without a separate admin TUI.
 
 <p align="center">
-  <img src="docs/images/architecture.svg" alt="styx-mcp architecture: LLM and local tools via controller to multi-hop agents" width="920">
+  <img src="docs/images/architecture.png" alt="styx-mcp architecture: LLM and local tools via controller to multi-hop agents" width="920">
 </p>
 
 ## Disclaimer
@@ -160,7 +160,7 @@ Long-running calls return `task_id` → poll with `get_task_status`.
 `start_forward` is **not** a drop-in for local SOCKS. `start_scan` is not a full fscan clone (no brute/exploit).
 
 <p align="center">
-  <img src="docs/images/traffic-modes.svg" alt="When to use start_socks, start_backward, start_forward, start_scan" width="920">
+  <img src="docs/images/traffic-modes.png" alt="When to use start_socks, start_backward, start_forward, start_scan" width="920">
 </p>
 
 ## Intranet scan (`start_scan`)
@@ -168,7 +168,7 @@ Long-running calls return `task_id` → poll with `get_task_status`.
 Runs on the selected **agent** (traffic exits that host).
 
 <p align="center">
-  <img src="docs/images/scan-pipeline.svg" alt="start_scan pipeline: discover, port scan, fingerprint, refs" width="920">
+  <img src="docs/images/scan-pipeline.png" alt="start_scan pipeline: discover, port scan, fingerprint, refs" width="920">
 </p>
 
 **Discover (hybrid, default on):** host is alive if **ICMP succeeds OR** any TCP probe port is open.  
