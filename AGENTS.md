@@ -49,4 +49,4 @@ MCP 多级跳板：controller 走 stdio MCP，agent 在对端出流量。
 
 - `openspec validate --all` 与相关测试通过再 commit；用户没说就不要 `git push`。
 - 说明：`fix:` / `feat:` / `refactor:` / `docs:`，短标题；行为变更写清 why / 对应 capability。
-- 不要提交 `release/`、密钥、本地 `.grok/config.toml`。
+- 不要提交构建产物、密钥、本地配置/日志；清单见 `.gitignore`（模板 `.grok/config.toml.example` 可提交）。

@@ -1,9 +1,64 @@
+# --- build outputs ---
 /release/
+/bin/
+/dist/
 *.exe
+*.dll
+*.so
+*.dylib
 *.test
 *.out
-.DS_Store
+# accidental in-tree binaries
+/controller
+/agent
+/controller.exe
+/agent.exe
 
-# Local lab MCP config / secret (never commit)
-.grok/styx.secret
-.grok/config.toml
+# --- Go test / coverage ---
+coverage.out
+coverage.html
+*.cover
+*.coverprofile
+profile.cov
+cpu.prof
+mem.prof
+*.pprof
+
+# --- secrets & local env (never commit real values) ---
+*.secret
+.env
+.env.*
+!.env.example
+
+# --- lab MCP config (templates stay tracked) ---
+.grok/*
+!.grok/config.toml.example
+
+# --- logs (wrapper may set STYX_MCP_LOG / STYX_LOG under repo) ---
+*.log
+logs/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# --- local agent / tool state (if dropped in-repo) ---
+.claude/
+.cursor/
+.grok-session/
+
+# --- Go workspace (local multi-module override) ---
+go.work
+go.work.sum
+
+# --- debug / temp ---
+__debug_bin*
+debug.test
+tmp/
+.tmp/
