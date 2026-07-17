@@ -23,39 +23,18 @@
 
 **Please read this README (especially [SOCKS vs forward vs backward vs scan](#socks-vs-forward-vs-backward-vs-scan)) before use.**
 
-## Why styx-mcp?
-
-| | [Stowaway](https://github.com/ph4ntonn/Stowaway) | **styx-mcp** |
-| :--- | :--- | :--- |
-| Control plane | Interactive admin TUI | **MCP tools** (LLM / Cursor native) |
-| SOCKS listen | Admin side | **Controller** (same idea) |
-| Primary user | Human operator | Agent + human |
-| Remote shell / download | Yes | Not yet |
-
-Built for **agent-driven** ops (MCP-native control plane). Multi-hop topology draws inspiration from [Stowaway](https://github.com/ph4ntonn/Stowaway); the identity, crypto, and tool surface are styx-mcp’s own.
-
 ## Features
 
 - Tree topology: active (`-c`) / passive (`-l`), multi-hop pivots
-- Mutual **HMAC** preauth + optional **TLS** (raw TCP only; WebSocket not implemented)
+- Mutual **HMAC** preauth + optional **TLS**
 - **SOCKS5** on the controller — local tools exit via a chosen node
-- Per-stream **byte-window flow control** (no silent SOCKS drops; matching controller/agent required)
+- Per-stream **byte-window flow control** (controller/agent must match)
 - **Forward** (listen on agent) & **backward** (listen on controller)
-- **Async `start_cmd`** (non-interactive `sh -c`, returns `task_id`)
-- **Async `start_scan`** — intranet recon from a chosen agent (discover → port scan → light fingerprint + vuln **refs**, not exploits)
-- **Async `pull_file`** / `upload_file` (task + local path; not interactive shell)
-- Async tasks + `get_task_status` (phases + progressive `result.progress` for long scans)
+- **Async `start_cmd`** — one-shot remote command (`task_id`)
+- **Async `start_scan`** — discover → port scan → light fingerprint + **refs**
+- **Async `pull_file`** / `upload_file`
+- Async tasks + `get_task_status` (phases + `result.progress` for long scans)
 - Cross-compile: Linux / Windows / macOS (`make build-all`)
-
-<details>
-<summary><strong>Not included yet</strong></summary>
-
-- Interactive remote shell
-- SOCKS username/password
-- Interactive admin TUI (by design: MCP is the control plane)
-- Full fscan-style brute force / POC execution
-
-</details>
 
 ## Table of contents
 
@@ -145,8 +124,8 @@ Never commit real secrets into public configs.
 | `start_backward` | Reverse forward | **Controller** → via node → target |
 | `upload_file` | Upload | Controller → agent |
 | `pull_file` | Pull file to controller | Agent → controller path |
-| `start_cmd` | Non-interactive one-shot | Agent `sh -c` (async `task_id`) |
-| `start_scan` | Intranet port scan + light fingerprint | **Agent** network stack (async `task_id`) |
+| `start_cmd` | One-shot remote command | Agent `sh -c` (async `task_id`) |
+| `start_scan` | Intranet port scan + light fingerprint | **Agent** (async `task_id`) |
 | `get_task_status` | Poll async work | — |
 | `shutdown_node` | Kill node | — |
 
@@ -159,9 +138,7 @@ Long-running calls return `task_id` → poll with `get_task_status`.
 | `curl` / scanners on the **controller host** into an internal net | `start_socks` |
 | One **controller** port → one internal `ip:port` | `start_backward` |
 | A port **on the foothold** that dials elsewhere | `start_forward` |
-| Structured open ports / fingerprints **from the agent** (no local SOCKS needed) | `start_scan` |
-
-`start_forward` is **not** a drop-in for local SOCKS. `start_scan` is not a full fscan clone (no brute/exploit).
+| Structured open ports / fingerprints **from the agent** | `start_scan` |
 
 <p align="center">
   <img src="docs/images/traffic-modes.png" alt="When to use start_socks, start_backward, start_forward, start_scan" width="920">
@@ -295,8 +272,7 @@ Connect to `127.0.0.1:19142` **on the controller host**.
 { "name": "get_task_status", "arguments": { "task_id": "start_scan-1" } }
 ```
 
-Useful result fields: `stats` (`hosts_alive`, `discover_ms`, `method`, `fallback`, …), `open[]`, `summary.interesting[]`, optional `warnings[]`.  
-`refs` are **hints** (CVE/advisory links), not confirmed vulnerabilities.
+Useful result fields: `stats`, `open[]`, `summary.interesting[]`, optional `warnings[]` / `refs`.
 
 </details>
 
@@ -344,7 +320,7 @@ Controller and agents must share the **same secret** (and matching TLS/WS option
 - Bind SOCKS to `127.0.0.1` unless you intentionally expose it.
 - Upload paths allow absolute destinations but reject `..`; max single-file transfer is 32 MiB.
 - MCP stdio logging is **off** by default; set `STYX_MCP_LOG=/path` only when debugging (may contain secrets).
-- `start_scan` is recon-only (connect/SYN + light fingerprint + advisory links). Do not treat refs as confirmed vulns. Rebuild controller **and** agent together after SCAN\* protocol changes.
+- Rebuild controller **and** agent from the same commit after protocol changes.
 
 ## Project layout
 
@@ -363,8 +339,9 @@ pkg/share/preauth/  HMAC mutual preauth
 
 ## Acknowledgments
 
-Multi-hop jump-proxy ideas are inspired by [Stowaway](https://github.com/ph4ntonn/Stowaway) (MIT, © ph4ntom) — thank you.  
-MCP server stack uses [mcp-go](https://github.com/mark3labs/mcp-go).
+- [Stowaway](https://github.com/ph4ntonn/Stowaway)
+- [fscan](https://github.com/shadow1ng/fscan)
+- [mcp-go](https://github.com/mark3labs/mcp-go)
 
 ## License
 
