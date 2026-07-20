@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-stdio-black" alt="MCP"></a>
   <a href="https://github.com/N0va-7/styx-mcp/stargazers"><img src="https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social" alt="GitHub stars"></a>
 </p>
@@ -34,12 +34,13 @@
 - **异步 `start_scan`** — 探活 → 端口 → 轻量指纹 + **refs**
 - **异步 `pull_file`** / `upload_file`
 - 异步任务 + `get_task_status`（阶段 phase；长扫描可带 `result.progress`）
+- **Agent 自动重连**（意外断线后 reonline，稳定 `node_id`；`SHUTDOWN` 不重连）
 - 交叉编译：Linux / Windows / macOS（`make build-all`）
 
 ## 目录
 
 - [快速开始](#快速开始)
-- [接入 Cursor MCP](#接入-cursor-mcp)
+- [接入 Cursor / Codex MCP](#接入-cursor--codex-mcp)
 - [MCP 工具](#mcp-工具)
 - [内网扫描（`start_scan`）](#内网扫描start_scan)
 - [示例](#示例)
@@ -73,7 +74,7 @@ make build-all   # linux-amd64 / windows-amd64 / darwin-arm64
 make test
 ```
 
-## 接入 Cursor MCP
+## 接入 Cursor / Codex MCP
 
 1. `make build`，确保有 `release/<os>-<arch>/controller`。
 2. 写入 `~/.cursor/mcp.json`（或项目 `.cursor/mcp.json`）：
@@ -109,6 +110,28 @@ make test
 | `STYX_BIN_DIR` | `release/<os>-<arch>` | 覆盖二进制目录 |
 
 不要把真实密钥提交到公开配置。
+
+### Codex
+
+1. `make build`，确保 `release/<os>-<arch>/controller` 存在。
+2. 写入 `~/.codex/config.toml`（绝对路径；使用强密钥）：
+
+```toml
+[mcp_servers.styx-mcp]
+command = "/absolute/path/to/styx-mcp/scripts/styx-mcp-wrapper.sh"
+enabled = true
+startup_timeout_sec = 45
+
+[mcp_servers.styx-mcp.env]
+STYX_SECRET = "change-me-to-a-strong-secret"
+STYX_LISTEN = "127.0.0.1:19137"
+STYX_LOG = "/tmp/styx-mcp-controller.log"
+```
+
+3. 重载 MCP / 新开 Codex 任务，确认出现 `list_nodes` 等工具。
+4. **同一时刻**只能有一个 controller 占用 `STYX_LISTEN`（Cursor 与 Codex 不要抢同一端口）。
+5. 跳板机：`./agent -s change-me -c <controller-ip>:19137`
+
 
 ## MCP 工具
 

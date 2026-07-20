@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-stdio-black" alt="MCP"></a>
   <a href="https://github.com/N0va-7/styx-mcp/stargazers"><img src="https://img.shields.io/github/stars/N0va-7/styx-mcp?style=social" alt="GitHub stars"></a>
 </p>
@@ -34,12 +34,13 @@
 - **Async `start_scan`** — discover → port scan → light fingerprint + **refs**
 - **Async `pull_file`** / `upload_file`
 - Async tasks + `get_task_status` (phases + `result.progress` for long scans)
+- **Agent auto-reconnect** after unexpected drop (stable `node_id` reonline; `SHUTDOWN` disables)
 - Cross-compile: Linux / Windows / macOS (`make build-all`)
 
 ## Table of contents
 
 - [Quick start](#quick-start)
-- [Cursor MCP setup](#cursor-mcp-setup)
+- [Cursor / Codex MCP setup](#cursor--codex-mcp-setup)
 - [MCP tools](#mcp-tools)
 - [Intranet scan (`start_scan`)](#intranet-scan-start_scan)
 - [Examples](#examples)
@@ -73,7 +74,7 @@ make build-all   # linux-amd64 / windows-amd64 / darwin-arm64
 make test
 ```
 
-## Cursor MCP setup
+## Cursor / Codex MCP setup
 
 1. `make build` so `release/<os>-<arch>/controller` exists.
 2. `~/.cursor/mcp.json` (or project `.cursor/mcp.json`):
@@ -109,6 +110,28 @@ make test
 | `STYX_BIN_DIR` | `release/<os>-<arch>` | Binary directory override |
 
 Never commit real secrets into public configs.
+
+### Codex
+
+1. `make build` so `release/<os>-<arch>/controller` exists.
+2. Add to `~/.codex/config.toml` (absolute path; strong secret):
+
+```toml
+[mcp_servers.styx-mcp]
+command = "/absolute/path/to/styx-mcp/scripts/styx-mcp-wrapper.sh"
+enabled = true
+startup_timeout_sec = 45
+
+[mcp_servers.styx-mcp.env]
+STYX_SECRET = "change-me-to-a-strong-secret"
+STYX_LISTEN = "127.0.0.1:19137"
+STYX_LOG = "/tmp/styx-mcp-controller.log"
+```
+
+3. Reload MCP / start a new Codex task so tools (`list_nodes`, …) appear.
+4. Only **one** controller may bind `STYX_LISTEN` (do not run Cursor and Codex wrappers on the same port together).
+5. On the foothold: `./agent -s change-me -c <controller-ip>:19137`
+
 
 ## MCP tools
 

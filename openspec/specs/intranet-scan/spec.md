@@ -1,7 +1,10 @@
 # intranet-scan Specification
 
 ## Purpose
-TBD - created by archiving change intranet-scan. Update Purpose after archive.
+
+Agent-side intranet recon: hybrid host discovery, port scan (connect or SYN when
+available), light fingerprinting, and async task progress exposed over MCP
+`start_scan` / `get_task_status`. Scans MUST exit via the selected online agent.
 ## Requirements
 ### Requirement: Scan exits via selected agent
 Intranet scanning SHALL originate from the network stack of the agent identified
