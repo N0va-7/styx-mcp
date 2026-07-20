@@ -74,9 +74,8 @@ make build-all   # linux-amd64 / windows-amd64 / darwin-arm64
 make test
 ```
 
-**Prebuilt binaries:** push a tag `v*` (e.g. `git tag v0.3.1 && git push origin v0.3.1`) and GitHub Actions publishes
-[Releases](https://github.com/N0va-7/styx-mcp/releases) with `linux-amd64` / `windows-amd64` / `darwin-arm64` archives
-plus `SHA256SUMS.txt`.
+**Prebuilt binaries:** see [Releases](https://github.com/N0va-7/styx-mcp/releases) when a maintainer publishes one
+(`make build-all`, then attach archives manually). Auto tag→Release CI is **not** enabled.
 
 ## Cursor / Codex MCP setup
 

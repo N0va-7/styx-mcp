@@ -74,8 +74,9 @@ make build-all   # linux-amd64 / windows-amd64 / darwin-arm64
 make test
 ```
 
-**预编译包：** 打 tag `v*`（例如 `git tag v0.3.1 && git push origin v0.3.1`）后，Actions 会发布
-[Releases](https://github.com/N0va-7/styx-mcp/releases)，含 `linux-amd64` / `windows-amd64` / `darwin-arm64` 压缩包及 `SHA256SUMS.txt`。
+**预编译包：** 有维护者发布时见 [Releases](https://github.com/N0va-7/styx-mcp/releases)
+（`make build-all` 后手动挂资产）。**未启用** tag 自动发版 CI。
+
 
 ## 接入 Cursor / Codex MCP
 
