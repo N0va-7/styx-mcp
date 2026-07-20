@@ -1,0 +1,55 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Cross-build
+        run: make build-all
+
+      - name: Package archives
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          OUT=dist
+          mkdir -p "$OUT"
+          # linux-amd64
+          tar -C release/linux-amd64 -czf "$OUT/styx-mcp_${TAG}_linux-amd64.tar.gz" controller agent
+          # darwin-arm64
+          tar -C release/darwin-arm64 -czf "$OUT/styx-mcp_${TAG}_darwin-arm64.tar.gz" controller agent
+          # windows-amd64
+          (cd release/windows-amd64 && zip -9 "../../$OUT/styx-mcp_${TAG}_windows-amd64.zip" controller.exe agent.exe)
+          (
+            cd "$OUT"
+            sha256sum styx-mcp_${TAG}_*.tar.gz styx-mcp_${TAG}_*.zip > SHA256SUMS.txt
+          )
+          ls -la "$OUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/styx-mcp_*.tar.gz
+            dist/styx-mcp_*.zip
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
